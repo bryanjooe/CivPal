@@ -1,0 +1,340 @@
+{
+  "contractors": [
+    [
+      {
+        "id": "CON-LT-9081",
+        "name": "L&T Public Infrastructure Ltd",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "CON-KSR-4421",
+        "name": "KSR Infrastructure Projects",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      }
+    ]
+  ],
+  "progress_reports": [
+    []
+  ],
+  "project_milestones": [
+    [
+      {
+        "project_id": "TN-PWD-2025-01",
+        "milestone_id": "M1",
+        "title": "Site Excavation & Utility Mapping",
+        "target_date": "2025-02-10",
+        "is_completed": true,
+        "completion_date": "2025-02-08"
+      },
+      {
+        "project_id": "TN-PWD-2025-01",
+        "milestone_id": "M2",
+        "title": "Reinforced Concrete Box Culvert Laying",
+        "target_date": "2025-03-25",
+        "is_completed": true,
+        "completion_date": "2025-03-22"
+      },
+      {
+        "project_id": "TN-PWD-2025-01",
+        "milestone_id": "M3",
+        "title": "Stormwater Outlet Linkage to Cooum River",
+        "target_date": "2025-04-30",
+        "is_completed": false,
+        "completion_date": null
+      },
+      {
+        "project_id": "TN-PWD-2025-01",
+        "milestone_id": "M4",
+        "title": "Asphalt Road Surface Relaying & Pavement",
+        "target_date": "2025-05-30",
+        "is_completed": false,
+        "completion_date": null
+      }
+    ]
+  ],
+  "jurisdictions": [
+    [
+      {
+        "id": "GCC",
+        "name": "Greater Chennai Corporation",
+        "kind": "MUNICIPALITY",
+        "parent_id": null,
+        "district": "Chennai",
+        "details": "38 Wards, Metro Circle",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "CMC",
+        "name": "Coimbatore Municipal Corporation",
+        "kind": "MUNICIPALITY",
+        "parent_id": null,
+        "district": "Coimbatore",
+        "details": "East, West, South, North Zones",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "MADURAI",
+        "name": "Madurai Corporation",
+        "kind": "MUNICIPALITY",
+        "parent_id": null,
+        "district": "Madurai",
+        "details": "Vaigai Circle, Central Zone",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "TRICHY",
+        "name": "Tiruchirappalli Corporation",
+        "kind": "MUNICIPALITY",
+        "parent_id": null,
+        "district": "Tiruchirappalli",
+        "details": "Srirangam & Golden Rock Zones",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "SALEM",
+        "name": "Salem City Municipal Corporation",
+        "kind": "MUNICIPALITY",
+        "parent_id": null,
+        "district": "Salem",
+        "details": "Zone 1, 2, 3, 4 Divisions",
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "PWD-CHENNAI-OFFICE",
+        "name": "Highways & PWD Chennai Metro Division",
+        "kind": "OFFICE",
+        "parent_id": null,
+        "district": "Chennai",
+        "details": null,
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "TWAD-COIMBATORE-OFFICE",
+        "name": "TWAD Water Supply Circle Coimbatore",
+        "kind": "OFFICE",
+        "parent_id": null,
+        "district": "Coimbatore",
+        "details": null,
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "COORD-CELL",
+        "name": "Tamil Nadu State Infrastructure Cell",
+        "kind": "OFFICE",
+        "parent_id": null,
+        "district": null,
+        "details": null,
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "LT-OFFICE",
+        "name": "L&T Infrastructure Ltd",
+        "kind": "OFFICE",
+        "parent_id": null,
+        "district": null,
+        "details": null,
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "EGOV-OFFICE",
+        "name": "Tamil Nadu E-Governance Agency",
+        "kind": "OFFICE",
+        "parent_id": null,
+        "district": null,
+        "details": null,
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      }
+    ]
+  ],
+  "projects": [
+    [
+      {
+        "id": "TN-PWD-2025-01",
+        "title": "Anna Salai Stormwater Drain & Road Resurfacing",
+        "description": "Comprehensive stormwater drain network construction and high-grade asphalt resurfacing along Anna Salai corridor to prevent monsoon flooding.",
+        "department_id": "PWD",
+        "department_name": "Public Works Department",
+        "district": "Chennai",
+        "municipal_body_id": "GCC",
+        "municipal_body": "Greater Chennai Corporation",
+        "location": "Anna Salai (Teynampet to Nandanam), Chennai",
+        "latitude": 13.0418,
+        "longitude": 80.2341,
+        "contractor_id": "CON-LT-9081",
+        "contractor_name": "L&T Public Infrastructure Ltd",
+        "responsible_office_id": "PWD-CHENNAI-OFFICE",
+        "responsible_office": "Highways & PWD Chennai Metro Division",
+        "current_officer_in_charge": "Er. R. Kanimozhi (Formerly Er. S. Sundaram)",
+        "estimated_budget_in_lakhs": 450.0,
+        "funding_source": "Tamil Nadu Urban Infrastructure Fund",
+        "start_date": "2025-01-15",
+        "original_completion_date": "2025-05-30",
+        "revised_completion_date": "2025-06-15",
+        "status": "ONGOING",
+        "progress_percentage": 68,
+        "is_published": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30",
+        "updated_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "TN-TWAD-2025-02",
+        "title": "Avinashi Road Water Pipeline Distribution Upgrade",
+        "description": "Replacement of aging iron water mains with high-density polyethylene pipelines to ensure 24/7 drinking water supply across East Coimbatore.",
+        "department_id": "TWAD",
+        "department_name": "TWAD Board",
+        "district": "Coimbatore",
+        "municipal_body_id": "CMC",
+        "municipal_body": "Coimbatore Municipal Corporation",
+        "location": "Avinashi Road (Peelamedu to Hope College), Coimbatore",
+        "latitude": 11.0283,
+        "longitude": 77.0012,
+        "contractor_id": "CON-KSR-4421",
+        "contractor_name": "KSR Infrastructure Projects",
+        "responsible_office_id": "TWAD-COIMBATORE-OFFICE",
+        "responsible_office": "TWAD Water Supply Circle Coimbatore",
+        "current_officer_in_charge": "Er. M. Saravanan",
+        "estimated_budget_in_lakhs": 280.0,
+        "funding_source": "AMRUT 2.0 Scheme",
+        "start_date": "2025-02-01",
+        "original_completion_date": "2025-04-28",
+        "revised_completion_date": "2025-07-20",
+        "status": "DELAYED",
+        "progress_percentage": 42,
+        "is_published": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30",
+        "updated_at": "2026-10-10T17:04:17.004674+05:30"
+      }
+    ]
+  ],
+  "delay_records": [
+    []
+  ],
+  "departments": [
+    [
+      {
+        "id": "PWD",
+        "code": "PWD",
+        "name": "Public Works Department",
+        "scope_description": "Highways, Buildings, Water Bodies",
+        "source_labels": [
+          "Public Works Department",
+          "Public Works Department (PWD)"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "TWAD",
+        "code": "TWAD",
+        "name": "TWAD Board",
+        "scope_description": "Tamil Nadu Water Supply & Drainage Board",
+        "source_labels": [
+          "TWAD Board"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "HWY",
+        "code": "HWY",
+        "name": "Highways Department",
+        "scope_description": "State Highways, Major District Roads",
+        "source_labels": [
+          "Highways Department"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "MAWS",
+        "code": "MAWS",
+        "name": "Municipal Administration & Water Supply",
+        "scope_description": "Corporations, Municipalities, Panchayats",
+        "source_labels": [
+          "Municipal Administration",
+          "Municipal Administration & Water Supply"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "TANGEDCO",
+        "code": "TANGEDCO",
+        "name": "TANGEDCO",
+        "scope_description": "Electricity Board Power Line Relocation",
+        "source_labels": [
+          "TANGEDCO"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "COORD",
+        "code": "COORD",
+        "name": "Inter-Departmental Coordination Cell",
+        "scope_description": null,
+        "source_labels": [
+          "Inter-Departmental Coordination Cell"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "CONTRACT",
+        "code": "CONTRACT",
+        "name": "Contractor Wing",
+        "scope_description": null,
+        "source_labels": [
+          "Contractor Wing"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      },
+      {
+        "id": "GOVTECH",
+        "code": "GOVTECH",
+        "name": "Governance Tech Wing",
+        "scope_description": null,
+        "source_labels": [
+          "Governance Tech Wing"
+        ],
+        "is_active": true,
+        "is_demo": true,
+        "created_at": "2026-10-10T17:04:17.004674+05:30"
+      }
+    ]
+  ]
+}

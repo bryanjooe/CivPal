@@ -1,0 +1,2944 @@
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\androidTest\\java\\com\\example\\civic\\ProjectQRIntegrationTest.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\androidTest\\java\\com\\example\\civic\\ProjectQRIntegrationTest.kt"
+index abb1e73..c90fe20 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\androidTest\\java\\com\\example\\civic\\ProjectQRIntegrationTest.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\androidTest\\java\\com\\example\\civic\\ProjectQRIntegrationTest.kt"
+@@ -73,5 +73,12 @@ class ProjectQRIntegrationTest {
+     @Test fun printableA4PageRemainsScannableInBothLanguages() {
+         val context = InstrumentationRegistry.getInstrumentation().targetContext
+-        val project = CivicDataRepository.projects.first()
++        val project = com.example.civic.data.models.Project(
++    id = "TN-PWD-2025-01", title = "Test Project", description = "QR test fixture",
++    department = "PWD", district = "Chennai", municipalBody = "Chennai", location = "Test location",
++    latitude = 13.04, longitude = 80.23, contractorName = "Test Contractor", contractorId = "CON-TEST",
++    responsibleOffice = "Test Office", currentOfficerInCharge = "Test Officer", estimatedBudgetInLakhs = 10.0,
++    fundingSource = "Test Fund", startDate = "01 Jan 2025", originalCompletionDate = "01 Dec 2025",
++    revisedCompletionDate = "01 Dec 2025", status = com.example.civic.data.models.ProjectStatus.ONGOING,
++    progressPercentage = 40)
+         val qr = ProjectQRUtils.bitmap(project.id)
+         try {
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\AndroidManifest.xml" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\AndroidManifest.xml"
+index 30b2e39..1451ad7 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\AndroidManifest.xml"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\AndroidManifest.xml"
+@@ -3,6 +3,8 @@
+     xmlns:tools="http://schemas.android.com/tools">
+ 
++    <uses-permission android:name="android.permission.INTERNET" />
++
+     <application
+-        android:allowBackup="true"
++        android:allowBackup="false"
+         android:dataExtractionRules="@xml/data_extraction_rules"
+         android:fullBackupContent="@xml/backup_rules"
+@@ -12,8 +14,16 @@
+         android:supportsRtl="true"
+         android:theme="@style/Theme.Civic">
++        <provider
++            android:name="androidx.core.content.FileProvider"
++            android:authorities="${applicationId}.documents"
++            android:exported="false"
++            android:grantUriPermissions="true">
++            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/document_paths" />
++        </provider>
+         <meta-data
+             android:name="com.google.mlkit.vision.DEPENDENCIES"
+             android:value="barcode_ui" />
+         <activity
++            android:launchMode="singleTop"
+             android:name=".MainActivity"
+             android:exported="true"
+@@ -26,4 +36,10 @@
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="civic" android:host="auth-callback" />
++            </intent-filter>
+         </activity>
+     </application>
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\MainActivity.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\MainActivity.kt"
+index de6bfa3..cb38765 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\MainActivity.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\MainActivity.kt"
+@@ -2,4 +2,8 @@ package com.example.civic
+ 
+ import android.os.Bundle
++import android.content.Intent
++import com.example.civic.data.backend.CivicSupabase
++import com.example.civic.data.CivicDataRepository
++import io.github.jan.supabase.auth.handleDeeplinks
+ import androidx.activity.ComponentActivity
+ import androidx.activity.SystemBarStyle
+@@ -19,4 +23,5 @@ class MainActivity : ComponentActivity() {
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        receiveAuthLink(intent)
+         enableEdgeToEdge(
+             statusBarStyle = SystemBarStyle.dark(CivicNavy.toArgb()),
+@@ -34,3 +39,18 @@ class MainActivity : ComponentActivity() {
+         }
+     }
++    override fun onNewIntent(intent: Intent) {
++        super.onNewIntent(intent)
++        setIntent(intent)
++        receiveAuthLink(intent)
++    }
++    private fun receiveAuthLink(intent: Intent) {
++        val uri = intent.data ?: return
++        if (!CivicSupabase.configured || uri.scheme != "civic" || uri.host != "auth-callback") return
++        CivicSupabase.client.handleDeeplinks(intent,
++            onSessionSuccess = {
++                val fragment = android.net.Uri.parse("https://callback/?${uri.fragment.orEmpty()}")
++                CivicDataRepository.recoverPassword = fragment.getQueryParameter("type") in listOf("recovery", "invite")
++                CivicDataRepository.launchOperation { CivicDataRepository.refresh() }
++            })
++    }
+ }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\data\\CivicDataRepository.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\data\\CivicDataRepository.kt"
+index 23ed341..ee58278 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\data\\CivicDataRepository.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\data\\CivicDataRepository.kt"
+@@ -1,22 +1,40 @@
+ package com.example.civic.data
+ 
+-import androidx.compose.runtime.getValue
+-import androidx.compose.runtime.mutableStateListOf
+-import androidx.compose.runtime.mutableStateOf
+-import androidx.compose.runtime.setValue
++import android.content.Context
++import android.net.Uri
++import androidx.compose.runtime.*
++import androidx.compose.runtime.snapshots.Snapshot
++import com.example.civic.data.backend.*
+ import com.example.civic.data.models.*
+-import java.text.SimpleDateFormat
+-import java.util.*
++import io.github.jan.supabase.auth.auth
++import io.github.jan.supabase.auth.providers.builtin.Email
++import io.github.jan.supabase.storage.storage
++import kotlinx.coroutines.*
++import kotlinx.coroutines.sync.Mutex
++import kotlinx.coroutines.sync.withLock
++import kotlinx.serialization.json.*
+ 
+-enum class AppLanguage {
+-    ENGLISH, TAMIL
+-}
++enum class AppLanguage { ENGLISH, TAMIL }
+ 
++/** Observable compatibility layer. Collections contain server results, never startup fixtures. */
+ object CivicDataRepository {
+-
+     var currentLanguage by mutableStateOf(AppLanguage.ENGLISH)
+     var currentUser by mutableStateOf<User?>(null)
+-
+-    // In-memory observable collections
++        private set
++    var loading by mutableStateOf(false)
++        private set
++    var working by mutableStateOf(false)
++        private set
++    var ready by mutableStateOf(false)
++        private set
++    var error by mutableStateOf<String?>(null)
++        private set
++    var lastRefresh by mutableStateOf<Long?>(null)
++        private set
++    var stale by mutableStateOf(true)
++        private set
++    var notificationsEnabled by mutableStateOf(true)
++        private set
++    var recoverPassword by mutableStateOf(false)
+     val projects = mutableStateListOf<Project>()
+     val complaints = mutableStateListOf<Complaint>()
+@@ -25,727 +43,325 @@ object CivicDataRepository {
+     val users = mutableStateListOf<User>()
+     val auditLogs = mutableStateListOf<AuditLogEntry>()
+-
+-    init {
+-        preloadSampleData()
+-        evaluateComplaintDeadlines()
++    val departments = mutableStateListOf<CivicCatalogEntry>()
++    val jurisdictions = mutableStateListOf<CivicCatalogEntry>()
++    val contractors = mutableStateListOf<CivicCatalogEntry>()
++    val deadlineRequests = mutableStateListOf<CivicDeadlineRequest>()
++    private var snapshot by mutableStateOf(CivicSnapshot(emptyMap()))
++    private val backend = CivicBackend()
++    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
++    private val lock = Mutex()
++    private var identityGeneration = 0
++    val isGuest get() = currentUser == null || currentUser?.email.isNullOrBlank()
++    val managedProjects get() = projects.filter { p ->
++        val row = snapshot.rows("projects").find { it.text("id") == p.id } ?: return@filter false
++        when (currentUser?.role) {
++            UserRole.ADMINISTRATOR -> true
++            UserRole.CONTRACTOR -> row.text("contractor_id") == ownProfile()?.text("contractor_id")
++            UserRole.OFFICER, UserRole.COORDINATOR -> hasScope(row.text("department_id"), row.text("responsible_office_id"))
++            else -> false
++        }
+     }
+-
++    val assignedProjects get() = managedProjects.filter { p -> currentUser?.role != UserRole.OFFICER ||
++        snapshot.rows("project_assignments").any { it.text("project_id") == p.id && it.text("officer_id") == currentUser?.id } }
++    val publicProjects get() = projects.filter { p -> snapshot.rows("projects").any { it.text("id") == p.id && it.flag("is_published") } }
++    val incomingHandovers get() = handovers.filter { h -> snapshot.rows("officer_handovers").any {
++        it.text("id") == h.id && it.text("incoming_officer_id") == currentUser?.id } }
++    private fun ownProfile() = snapshot.rows("profiles").find { it.text("id") == currentUser?.id }
++    private fun hasScope(department: String, jurisdiction: String): Boolean {
++        val ancestors = mutableSetOf<String>()
++        var next: String? = jurisdiction
++        while (next != null && ancestors.add(next)) next = jurisdictions.find { it.id == next }?.parentId
++        return snapshot.rows("profile_scopes").any { it.text("profile_id") == currentUser?.id &&
++            it.text("department_id") == department && it.text("jurisdiction_id") in ancestors }
++    }
++    fun clearError() { error = null }
++    fun reportError(message: String) { error = message }
+     fun toggleLanguage() {
+-        currentLanguage = if (currentLanguage == AppLanguage.ENGLISH) AppLanguage.TAMIL else AppLanguage.ENGLISH
++        setLanguage(if (currentLanguage == AppLanguage.ENGLISH) AppLanguage.TAMIL else AppLanguage.ENGLISH)
+     }
+-
+-    // Reusable deadline calculation and overdue detection engine
+-    fun evaluateComplaintDeadlines(currentTimeMillis: Long = System.currentTimeMillis()) {
+-        val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+-        val dateStr = dateFormat.format(Date(currentTimeMillis))
+-
+-        complaints.indices.forEach { index ->
+-            val c = complaints[index]
+-            val isUnresolved = c.status == ComplaintStatus.PENDING ||
+-                    c.status == ComplaintStatus.UNDER_REVIEW ||
+-                    c.status == ComplaintStatus.AWAITING_CITIZEN_INFO
+-
+-            if (isUnresolved && currentTimeMillis > c.deadlineTimestampMillis) {
+-                // Prevent duplicate escalation events in history
+-                val alreadyHasEscalation = c.eventHistory.any { it.eventType == "Escalated — Overdue" }
+-                val newHistory = if (!alreadyHasEscalation) {
+-                    c.eventHistory + ComplaintEvent(
+-                        id = "EVT-ESC-${c.id}",
+-                        timestampMillis = c.deadlineTimestampMillis,
+-                        dateString = dateFormat.format(Date(c.deadlineTimestampMillis)),
+-                        eventType = "Escalated — Overdue",
+-                        description = "7-day official response deadline passed without a qualifying recorded response. Complaint automatically escalated to High Priority.",
+-                        performedBy = "System Escalation Engine"
+-                    )
+-                } else c.eventHistory
+-
+-                complaints[index] = c.copy(
+-                    status = ComplaintStatus.ESCALATED_OVERDUE,
+-                    priority = ComplaintPriority.HIGH,
+-                    eventHistory = newHistory
+-                )
+-
+-                addAuditLog(
+-                    action = "Complaint Auto-Escalated",
+-                    performedBy = "System Engine",
+-                    targetType = "Complaint",
+-                    targetId = c.id,
+-                    details = "Exceeded 7-day deadline. Assigned to ${c.assignedOfficerName ?: "Unassigned (Manager Action Needed)"}"
+-                )
+-            }
+-        }
++    fun setLanguage(language: AppLanguage) {
++        currentLanguage = language
++        if (currentUser != null) launchOperation { updatePreferences() }
+     }
+-
+-    private fun preloadSampleData() {
+-        if (projects.isNotEmpty()) return
+-
+-        val now = System.currentTimeMillis()
+-        val dayMillis = 24 * 60 * 60 * 1000L
+-        val hourMillis = 60 * 60 * 1000L
+-
+-        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH)
+-
+-        // 1. Preload Sample Projects in Tamil Nadu
+-        projects.addAll(
+-            listOf(
+-                Project(
+-                    id = "TN-PWD-2025-01",
+-                    title = "Anna Salai Stormwater Drain & Road Resurfacing",
+-                    description = "Comprehensive stormwater drain network construction and high-grade asphalt resurfacing along Anna Salai corridor to prevent monsoon flooding.",
+-                    department = "Public Works Department",
+-                    district = "Chennai",
+-                    municipalBody = "Greater Chennai Corporation",
+-                    location = "Anna Salai (Teynampet to Nandanam), Chennai",
+-                    latitude = 13.0418,
+-                    longitude = 80.2341,
+-                    contractorName = "L&T Public Infrastructure Ltd",
+-                    contractorId = "CON-LT-9081",
+-                    responsibleOffice = "Highways & PWD Chennai Metro Division",
+-                    currentOfficerInCharge = "Er. R. Kanimozhi (Formerly Er. S. Sundaram)",
+-                    estimatedBudgetInLakhs = 450.0,
+-                    fundingSource = "Tamil Nadu Urban Infrastructure Fund",
+-                    startDate = "15 Jan 2025",
+-                    originalCompletionDate = "30 May 2025",
+-                    revisedCompletionDate = "15 Jun 2025",
+-                    status = ProjectStatus.ONGOING,
+-                    progressPercentage = 68,
+-                    milestones = listOf(
+-                        Milestone("M1", "Site Excavation & Utility Mapping", "10 Feb 2025", true, "08 Feb 2025"),
+-                        Milestone("M2", "Reinforced Concrete Box Culvert Laying", "25 Mar 2025", true, "22 Mar 2025"),
+-                        Milestone("M3", "Stormwater Outlet Linkage to Cooum River", "30 Apr 2025", false),
+-                        Milestone("M4", "Asphalt Road Surface Relaying & Pavement", "30 May 2025", false)
+-                    ),
+-                    isFollowed = true
+-                ),
+-                Project(
+-                    id = "TN-TWAD-2025-02",
+-                    title = "Avinashi Road Water Pipeline Distribution Upgrade",
+-                    description = "Replacement of aging iron water mains with high-density polyethylene pipelines to ensure 24/7 drinking water supply across East Coimbatore.",
+-                    department = "TWAD Board",
+-                    district = "Coimbatore",
+-                    municipalBody = "Coimbatore Municipal Corporation",
+-                    location = "Avinashi Road (Peelamedu to Hope College), Coimbatore",
+-                    latitude = 11.0283,
+-                    longitude = 77.0012,
+-                    contractorName = "KSR Infrastructure Projects",
+-                    contractorId = "CON-KSR-4421",
+-                    responsibleOffice = "TWAD Water Supply Circle Coimbatore",
+-                    currentOfficerInCharge = "Er. M. Saravanan",
+-                    estimatedBudgetInLakhs = 280.0,
+-                    fundingSource = "AMRUT 2.0 Scheme",
+-                    startDate = "01 Feb 2025",
+-                    originalCompletionDate = "28 Apr 2025",
+-                    revisedCompletionDate = "20 Jul 2025",
+-                    status = ProjectStatus.DELAYED,
+-                    progressPercentage = 42
+-                )
+-            )
+-        )
+-
+-        // 2. Preload Complaints with Deterministic 7-Day Deadlines & Test Cases
+-        val subTime1 = now - (1 * dayMillis) // 1 day ago (6 days remaining)
+-        val deadTime1 = subTime1 + (7 * dayMillis)
+-
+-        val subTime2 = now - (6 * dayMillis + 20 * hourMillis) // Due today (4 hours remaining)
+-        val deadTime2 = subTime2 + (7 * dayMillis)
+-
+-        val subTime3 = now - (9 * dayMillis) // 9 days ago -> OVERDUE by 2 days
+-        val deadTime3 = subTime3 + (7 * dayMillis)
+-
+-        val subTime4 = now - (10 * dayMillis) // Answered before deadline
+-        val deadTime4 = subTime4 + (7 * dayMillis)
+-
+-        val subTime5 = now - (12 * dayMillis) // Overdue, then answered late
+-        val deadTime5 = subTime5 + (7 * dayMillis)
+-
+-        val subTime6 = now - (8 * dayMillis) // Overdue & Unassigned
+-        val deadTime6 = subTime6 + (7 * dayMillis)
+-
+-        complaints.addAll(
+-            listOf(
+-                Complaint(
+-                    id = "CMP-2026-101",
+-                    category = ComplaintCategory.POTHOLE,
+-                    projectId = "TN-TWAD-2025-02",
+-                    projectTitle = "Avinashi Road Water Pipeline Upgrade",
+-                    location = "Avinashi Road Near Hope College, Coimbatore",
+-                    district = "Coimbatore",
+-                    description = "Unpaved trench left open after water pipeline work causing traffic bottlenecks.",
+-                    submittedByCitizenName = "S. Karthik",
+-                    submittedDate = dateFormat.format(Date(subTime1)),
+-                    submissionTimestampMillis = subTime1,
+-                    deadlineTimestampMillis = deadTime1,
+-                    assignedDepartment = "TWAD Board",
+-                    assignedOfficerName = "Er. M. Saravanan",
+-                    assignedOfficerEmail = "officer.saravanan@twad.tn.gov.in",
+-                    status = ComplaintStatus.UNDER_REVIEW,
+-                    priority = ComplaintPriority.NORMAL,
+-                    lastUpdatedDate = "1 day ago",
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E1", subTime1, dateFormat.format(Date(subTime1)), "Submitted", "Complaint registered by citizen S. Karthik.", "S. Karthik"),
+-                        ComplaintEvent("E2", subTime1 + (2 * hourMillis), dateFormat.format(Date(subTime1 + 2 * hourMillis)), "Officer Assigned", "Assigned to Er. M. Saravanan (TWAD Board).", "System"),
+-                        ComplaintEvent("E3", subTime1 + (5 * hourMillis), dateFormat.format(Date(subTime1 + 5 * hourMillis)), "Review Started", "Official review initiated.", "Er. M. Saravanan")
+-                    )
+-                ),
+-                Complaint(
+-                    id = "CMP-2026-102",
+-                    category = ComplaintCategory.DRAINAGE_OVERFLOW,
+-                    projectId = "TN-PWD-2025-01",
+-                    projectTitle = "Anna Salai Stormwater Drain & Road Resurfacing",
+-                    location = "Anna Salai Service Lane, Teynampet, Chennai",
+-                    district = "Chennai",
+-                    description = "Construction debris blocking existing roadside storm drain outlet.",
+-                    submittedByCitizenName = "M. Meenakshi",
+-                    submittedDate = dateFormat.format(Date(subTime2)),
+-                    submissionTimestampMillis = subTime2,
+-                    deadlineTimestampMillis = deadTime2,
+-                    assignedDepartment = "Public Works Department",
+-                    assignedOfficerName = "Er. R. Kanimozhi",
+-                    assignedOfficerEmail = "officer.kanimozhi@pwd.tn.gov.in",
+-                    status = ComplaintStatus.PENDING,
+-                    priority = ComplaintPriority.NORMAL,
+-                    lastUpdatedDate = "Today",
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E10", subTime2, dateFormat.format(Date(subTime2)), "Submitted", "Complaint registered by citizen M. Meenakshi.", "M. Meenakshi")
+-                    )
+-                ),
+-                Complaint(
+-                    id = "CMP-2026-103",
+-                    category = ComplaintCategory.CONSTRUCTION_QUALITY,
+-                    projectId = "TN-PWD-2025-01",
+-                    projectTitle = "Anna Salai Stormwater Drain",
+-                    location = "Anna Salai Teynampet Signal, Chennai",
+-                    district = "Chennai",
+-                    description = "Deep unpaved trench causing severe traffic congestion.",
+-                    submittedByCitizenName = "P. Selvam",
+-                    submittedDate = dateFormat.format(Date(subTime3)),
+-                    submissionTimestampMillis = subTime3,
+-                    deadlineTimestampMillis = deadTime3,
+-                    assignedDepartment = "Public Works Department",
+-                    assignedOfficerName = "Er. R. Kanimozhi",
+-                    assignedOfficerEmail = "officer.kanimozhi@pwd.tn.gov.in",
+-                    status = ComplaintStatus.ESCALATED_OVERDUE,
+-                    priority = ComplaintPriority.HIGH,
+-                    lastUpdatedDate = "Overdue",
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E20", subTime3, dateFormat.format(Date(subTime3)), "Submitted", "Complaint registered.", "P. Selvam"),
+-                        ComplaintEvent("E21", deadTime3, dateFormat.format(Date(deadTime3)), "Escalated — Overdue", "7-day official response deadline passed without response. Automatically escalated.", "System Escalation Engine")
+-                    )
+-                ),
+-                Complaint(
+-                    id = "CMP-2026-104",
+-                    category = ComplaintCategory.WATER_LEAK,
+-                    projectId = null,
+-                    projectTitle = null,
+-                    location = "Main Street Junction, Salem",
+-                    district = "Salem",
+-                    description = "Water pipeline leakage near bus stand.",
+-                    submittedByCitizenName = "K. Raman",
+-                    submittedDate = dateFormat.format(Date(subTime4)),
+-                    submissionTimestampMillis = subTime4,
+-                    deadlineTimestampMillis = deadTime4,
+-                    assignedDepartment = "TWAD Board",
+-                    assignedOfficerName = "Er. V. Murugan",
+-                    status = ComplaintStatus.RESOLVED,
+-                    priority = ComplaintPriority.NORMAL,
+-                    lastUpdatedDate = "Resolved",
+-                    responses = listOf(
+-                        ComplaintResponse("R104", dateFormat.format(Date(subTime4 + 2 * dayMillis)), "Er. V. Murugan", "Government Officer", "Pipe leak repaired and pressure tested.")
+-                    ),
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E30", subTime4, dateFormat.format(Date(subTime4)), "Submitted", "Complaint registered.", "K. Raman"),
+-                        ComplaintEvent("E31", subTime4 + (2 * dayMillis), dateFormat.format(Date(subTime4 + 2 * dayMillis)), "Resolved", "Leak repaired before deadline.", "Er. V. Murugan")
+-                    )
+-                ),
+-                Complaint(
+-                    id = "CMP-2026-105",
+-                    category = ComplaintCategory.POTHOLE,
+-                    location = "Vaigai River South Bank Road, Madurai",
+-                    district = "Madurai",
+-                    description = "Road potholes near river bridge.",
+-                    submittedByCitizenName = "A. Vijay",
+-                    submittedDate = dateFormat.format(Date(subTime5)),
+-                    submissionTimestampMillis = subTime5,
+-                    deadlineTimestampMillis = deadTime5,
+-                    assignedDepartment = "Highways Department",
+-                    assignedOfficerName = "Er. A. Vijayalakshmi",
+-                    status = ComplaintStatus.RESOLVED,
+-                    priority = ComplaintPriority.HIGH,
+-                    lastUpdatedDate = "Resolved (Late)",
+-                    responses = listOf(
+-                        ComplaintResponse("R105", dateFormat.format(Date(subTime5 + 9 * dayMillis)), "Er. A. Vijayalakshmi", "Government Officer", "Road potholes filled with asphalt mix on 9th day.")
+-                    ),
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E40", subTime5, dateFormat.format(Date(subTime5)), "Submitted", "Complaint registered.", "A. Vijay"),
+-                        ComplaintEvent("E41", deadTime5, dateFormat.format(Date(deadTime5)), "Escalated — Overdue", "7-day deadline passed without response. Escalated.", "System Escalation Engine"),
+-                        ComplaintEvent("E42", subTime5 + (9 * dayMillis), dateFormat.format(Date(subTime5 + 9 * dayMillis)), "Late Response Recorded", "Officer responded late. Complaint resolved.", "Er. A. Vijayalakshmi")
+-                    )
+-                ),
+-                Complaint(
+-                    id = "CMP-2026-106",
+-                    category = ComplaintCategory.OTHER,
+-                    location = "Chinthamani Circle, Tiruchirappalli",
+-                    district = "Tiruchirappalli",
+-                    description = "Unattended construction debris on bridge approach.",
+-                    submittedByCitizenName = "R. Suresh",
+-                    submittedDate = dateFormat.format(Date(subTime6)),
+-                    submissionTimestampMillis = subTime6,
+-                    deadlineTimestampMillis = deadTime6,
+-                    assignedDepartment = "Highways Department",
+-                    assignedOfficerName = null, // Unassigned!
+-                    status = ComplaintStatus.ESCALATED_OVERDUE,
+-                    priority = ComplaintPriority.HIGH,
+-                    lastUpdatedDate = "Unassigned — Escalation Required",
+-                    eventHistory = listOf(
+-                        ComplaintEvent("E50", subTime6, dateFormat.format(Date(subTime6)), "Submitted", "Complaint registered.", "R. Suresh"),
+-                        ComplaintEvent("E51", deadTime6, dateFormat.format(Date(deadTime6)), "Escalated — Overdue", "7-day deadline passed without assigned officer response. Flagged for Manager Action.", "System Escalation Engine")
+-                    )
+-                )
+-            )
+-        )
+-
+-        // 3. Preload Inter-Departmental Schedule Conflicts
+-        conflicts.addAll(
+-            listOf(
+-                ScheduleConflict(
+-                    id = "CONF-TN-101",
+-                    projectAId = "TN-PWD-2025-01",
+-                    projectATitle = "Anna Salai Stormwater Drain & Road Resurfacing",
+-                    departmentA = "Public Works Department",
+-                    projectBId = "TN-TWAD-2025-09",
+-                    projectBTitle = "Teynampet High Pressure Water Main Extension",
+-                    departmentB = "TWAD Board",
+-                    location = "Anna Salai Service Road (Teynampet Signal)",
+-                    conflictingDates = "10 May 2025 to 25 May 2025",
+-                    conflictType = ConflictType.ROAD_DIGGING_OVERLAP,
+-                    status = ConflictStatus.UNRESOLVED,
+-                    proposedResolution = "Postpone TWAD pipeline trenching until PWD completes culvert linkage or execute joint trench excavation."
+-                )
+-            )
+-        )
+-
+-        // 4. Preload Officer Handovers
+-        handovers.addAll(
+-            listOf(
+-                OfficerHandover(
+-                    id = "HO-2026-88",
+-                    outgoingOfficerName = "Er. S. Sundaram",
+-                    outgoingOfficerEmail = "officer.sundaram@pwd.tn.gov.in",
+-                    incomingOfficerName = "Er. R. Kanimozhi",
+-                    incomingOfficerEmail = "officer.kanimozhi@pwd.tn.gov.in",
+-                    department = "Public Works Department",
+-                    officeJurisdiction = "Highways & PWD Chennai Metro Division",
+-                    effectiveTransferDate = "15 Mar 2025",
+-                    reasonForReassignment = "Routine Departmental Transfer",
+-                    assignedProjectsCount = 2,
+-                    pendingTasksCount = 3,
+-                    handoverNotes = "Project TN-PWD-2025-01 is 68% complete.",
+-                    status = HandoverStatus.ACKNOWLEDGED,
+-                    acknowledgedDate = "16 Mar 2025"
+-                )
+-            )
+-        )
+-
+-        // 5. Preload Users
+-        users.addAll(
+-            listOf(
+-                User("U1", "R. Anbarasan (Citizen)", "citizen@civictech.tn.gov.in", UserRole.CITIZEN, isDemoAccount = true),
+-                User("U2", "Er. R. Kanimozhi", "officer.kanimozhi@pwd.tn.gov.in", UserRole.OFFICER, "Public Works Department", "Highways & PWD Chennai Metro Division", isDemoAccount = true),
+-                User("U3", "Dr. S. Ramanathan", "coord.raman@tn.gov.in", UserRole.COORDINATOR, "Inter-Departmental Coordination Cell", "Tamil Nadu State Infrastructure Cell", isDemoAccount = true),
+-                User("U4", "L&T Infrastructure Admin", "contractor.lt@infra.com", UserRole.CONTRACTOR, "Contractor Wing", "L&T Infrastructure Ltd", isDemoAccount = true),
+-                User("U5", "System Admin (Chennai HQ)", "admin.civic@tn.gov.in", UserRole.ADMINISTRATOR, "Governance Tech Wing", "Tamil Nadu E-Governance Agency", isDemoAccount = true)
+-            )
+-        )
+-
+-        // 6. Preload Audit Logs
+-        auditLogs.addAll(
+-            listOf(
+-                AuditLogEntry("AL-100", "16 Mar 2025", "Officer Handover Acknowledged", "Er. R. Kanimozhi", "OfficerHandover", "HO-2026-88", "Officer handover completed."),
+-                AuditLogEntry("AL-101", "12 Mar 2025", "Complaint Resolved", "Er. R. Kanimozhi", "Complaint", "CMP-2026-102", "Status changed to Resolved.")
+-            )
+-        )
+-    }
+-
+-    // Mutating actions
+-
+-    fun submitComplaint(
+-        category: ComplaintCategory,
+-        projectId: String?,
+-        projectTitle: String?,
+-        location: String,
+-        district: String,
+-        description: String,
+-        photoUri: String?,
+-        citizenName: String
+-    ): Complaint {
+-        val now = System.currentTimeMillis()
+-        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.ENGLISH)
+-        val newId = "CMP-2026-${(107..999).random()}"
+-        val dept = when (category) {
+-            ComplaintCategory.POTHOLE -> "Highways Department"
+-            ComplaintCategory.WATER_LEAK -> "TWAD Board"
+-            ComplaintCategory.DRAINAGE_OVERFLOW -> "Public Works Department"
+-            else -> "Municipal Administration"
++    /** Success callbacks run only after server success. Double taps are ignored while a write is pending. */
++    fun launchOperation(action: suspend () -> Unit) {
++        if (working) return
++        working = true; error = null
++        scope.launch {
++            try { withTimeout(60_000) { action() } }
++            catch (e: TimeoutCancellationException) { error = "Request timed out. Refresh to check whether it saved before retrying." }
++            catch (e: CancellationException) { throw e }
++            catch (e: Exception) { error = friendlyError(e) }
++            finally { working = false }
+         }
+-
+-        val initialEvent = ComplaintEvent(
+-            id = "EVT-SUB-$newId",
+-            timestampMillis = now,
+-            dateString = dateFormat.format(Date(now)),
+-            eventType = "Submitted",
+-            description = "Complaint registered by citizen $citizenName. Assigned 7-day official response deadline.",
+-            performedBy = citizenName
+-        )
+-
+-        val newComplaint = Complaint(
+-            id = newId,
+-            category = category,
+-            projectId = projectId,
+-            projectTitle = projectTitle,
+-            location = location,
+-            district = district,
+-            description = description,
+-            photoUri = photoUri,
+-            submittedByCitizenName = citizenName,
+-            submittedDate = dateFormat.format(Date(now)),
+-            submissionTimestampMillis = now,
+-            deadlineTimestampMillis = now + (7 * 24 * 60 * 60 * 1000L), // Exactly 7 calendar days
+-            assignedDepartment = dept,
+-            assignedOfficerName = "Er. R. Kanimozhi",
+-            assignedOfficerEmail = "officer.kanimozhi@pwd.tn.gov.in",
+-            status = ComplaintStatus.PENDING,
+-            priority = ComplaintPriority.NORMAL,
+-            lastUpdatedDate = "Just now",
+-            eventHistory = listOf(initialEvent)
+-        )
+-
+-        complaints.add(0, newComplaint)
+-        addAuditLog("Complaint Submitted", citizenName, "Complaint", newId, "Category: ${category.labelEn}, 7-Day Deadline Set")
+-        return newComplaint
+     }
+-
+-    fun respondToComplaint(
+-        complaintId: String,
+-        decision: ComplaintStatus,
+-        responseText: String,
+-        officerName: String,
+-        officerRole: String = "Government Officer"
+-    ) {
+-        val index = complaints.indexOfFirst { it.id == complaintId }
+-        if (index != -1) {
+-            val c = complaints[index]
+-            val now = System.currentTimeMillis()
+-            val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+-            val dateStr = dateFormat.format(Date(now))
+-
+-            val wasOverdue = c.status == ComplaintStatus.ESCALATED_OVERDUE || now > c.deadlineTimestampMillis
+-
+-            val newResponse = ComplaintResponse(
+-                id = "R-${System.currentTimeMillis()}",
+-                date = dateStr,
+-                respondedBy = officerName,
+-                role = officerRole,
+-                message = responseText
+-            )
+-
+-            val eventTypeStr = if (wasOverdue) "Late Official Response Recorded" else "Official Response Recorded (${decision.labelEn})"
+-            val eventDesc = if (wasOverdue) "Officer responded after 7-day deadline passed. Decision: ${decision.labelEn}. $responseText" else "Officer decision: ${decision.labelEn}. $responseText"
+-
+-            val newEvent = ComplaintEvent(
+-                id = "EVT-RESP-${System.currentTimeMillis()}",
+-                timestampMillis = now,
+-                dateString = dateStr,
+-                eventType = eventTypeStr,
+-                description = eventDesc,
+-                performedBy = officerName
+-            )
+-
+-            complaints[index] = c.copy(
+-                status = decision,
+-                lastUpdatedDate = dateStr,
+-                responses = c.responses + newResponse,
+-                eventHistory = c.eventHistory + newEvent
+-            )
+-
+-            addAuditLog("Complaint Responded", officerName, "Complaint", complaintId, "Decision: ${decision.labelEn}, Was Overdue: $wasOverdue")
++    private fun friendlyError(e: Exception): String {
++        if (e is IllegalArgumentException || e is IllegalStateException) return e.message ?: "Check your input."
++        val message = e.message.orEmpty()
++        val tamil = currentLanguage == AppLanguage.TAMIL
++        return when {
++            tamil && "Invalid login" in message -> "மின்னஞ்சல் அல்லது கடவுச்சொல் தவறு."
++            tamil && "Email not confirmed" in message -> "உள்நுழையும் முன் மின்னஞ்சலை உறுதிப்படுத்தவும்."
++            tamil && ("42501" in message || "403" in message) -> "இந்தச் செயலைச் செய்ய உங்கள் கணக்கிற்கு அனுமதி இல்லை."
++            tamil && "401" in message -> "அமர்வு காலாவதியானது. மீண்டும் உள்நுழையவும்."
++            tamil && "429" in message -> "அதிக கோரிக்கைகள். சிறிது நேரம் கழித்து முயற்சிக்கவும்."
++            tamil -> "கோரிக்கையை முடிக்க முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்."
++            "Invalid login" in message -> "Invalid email or password."
++            "Email not confirmed" in message -> "Confirm your email before signing in."
++            "42501" in message || "403" in message -> "Your account is not authorized for this operation."
++            "401" in message -> "Your session has expired. Sign in again."
++            "429" in message -> "Too many requests. Please try again later."
++            else -> "Unable to complete the request. Check your connection and retry."
+         }
+     }
+-
+-    fun requestCitizenInformation(
+-        complaintId: String,
+-        requestText: String,
+-        officerName: String
+-    ) {
+-        val index = complaints.indexOfFirst { it.id == complaintId }
+-        if (index != -1) {
+-            val c = complaints[index]
+-            val now = System.currentTimeMillis()
+-            val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+-            val dateStr = dateFormat.format(Date(now))
+-
+-            val newResponse = ComplaintResponse(
+-                id = "R-REQ-${System.currentTimeMillis()}",
+-                date = dateStr,
+-                respondedBy = officerName,
+-                role = "Government Officer",
+-                message = "Information Requested: $requestText"
+-            )
+-
+-            val newEvent = ComplaintEvent(
+-                id = "EVT-REQ-${System.currentTimeMillis()}",
+-                timestampMillis = now,
+-                dateString = dateStr,
+-                eventType = "Additional Information Requested",
+-                description = "Officer requested clarification: $requestText",
+-                performedBy = officerName
+-            )
+-
+-            complaints[index] = c.copy(
+-                status = ComplaintStatus.AWAITING_CITIZEN_INFO,
+-                lastUpdatedDate = dateStr,
+-                responses = c.responses + newResponse,
+-                eventHistory = c.eventHistory + newEvent
+-            )
+-
+-            addAuditLog("Information Requested for Complaint", officerName, "Complaint", complaintId, requestText)
+-        }
++    suspend fun initialize() {
++        if (ready) return
++        try { withTimeout(45_000) { backend.client.auth.awaitInitialization(); refresh() } }
++        catch (e: CancellationException) { if (e !is TimeoutCancellationException) throw e; error = "Connection timed out. Tap Refresh to retry." }
++        catch (e: Exception) { error = friendlyError(e) }
++        finally { ready = true }
+     }
+-
+-    fun toggleProjectFollow(projectId: String) {
+-        val index = projects.indexOfFirst { it.id == projectId }
+-        if (index != -1) {
+-            val p = projects[index]
+-            projects[index] = p.copy(isFollowed = !p.isFollowed)
+-        }
++    suspend fun refresh() = lock.withLock {
++        loading = true
++        val generation = identityGeneration
++        try {
++            val next = backend.snapshot()
++            if (generation != identityGeneration) return@withLock
++            val authId = backend.client.auth.currentUserOrNull()?.id
++            val profile = next.rows("profiles").find { it.text("id") == authId }
++            if (authId != null && (profile == null || !profile.flag("is_active"))) {
++                clearIdentity()
++                error("Your profile is unavailable or inactive. Sign out and contact an administrator.")
++            }
++            val p = next.rows("projects").map(next::project)
++            val c = next.rows("complaints").map(next::complaint)
++            val f = next.rows("project_conflicts").map(next::conflict)
++            val h = next.rows("officer_handovers").map(next::handover)
++            val u = next.rows("profiles").map(next::user)
++            val a = next.rows("audit_logs").sortedByDescending { it.text("event_at") }.map(next::audit)
++            Snapshot.withMutableSnapshot {
++                if (currentUser?.id != authId && profile != null) {
++                    currentLanguage = if (profile.text("preferred_language") == "TAMIL") AppLanguage.TAMIL else AppLanguage.ENGLISH
++                }
++                snapshot = next
++                projects.replace(p); complaints.replace(c); conflicts.replace(f); handovers.replace(h)
++                users.replace(u); auditLogs.replace(a)
++                departments.replace(next.catalog("departments")); jurisdictions.replace(next.catalog("jurisdictions"))
++                contractors.replace(next.catalog("contractors"))
++                deadlineRequests.replace(next.rows("deadline_revision_requests").map(next::deadline))
++                currentUser = profile?.let(next::user)
++                notificationsEnabled = profile?.flag("notifications_enabled") ?: true
++                lastRefresh = System.currentTimeMillis(); stale = false; error = null
++            }
++        } catch (e: Exception) { stale = true; throw e }
++        finally { loading = false }
+     }
+-
+-    fun registerProject(
+-        title: String,
+-        description: String,
+-        department: String,
+-        district: String,
+-        municipalBody: String,
+-        location: String,
+-        contractorName: String,
+-        responsibleOffice: String,
+-        officerInCharge: String,
+-        budgetLakhs: Double,
+-        fundingSource: String,
+-        startDate: String,
+-        completionDate: String
+-    ): Project {
+-        val count = projects.size + 1
+-        val newId = "TN-${department.take(3).uppercase()}-2025-0$count"
+-        val newProject = Project(
+-            id = newId,
+-            title = title,
+-            description = description,
+-            department = department,
+-            district = district,
+-            municipalBody = municipalBody,
+-            location = location,
+-            latitude = 13.0827,
+-            longitude = 80.2707,
+-            contractorName = contractorName,
+-            contractorId = "CON-GEN-550",
+-            responsibleOffice = responsibleOffice,
+-            currentOfficerInCharge = officerInCharge,
+-            estimatedBudgetInLakhs = budgetLakhs,
+-            fundingSource = fundingSource,
+-            startDate = startDate,
+-            originalCompletionDate = completionDate,
+-            revisedCompletionDate = completionDate,
+-            status = ProjectStatus.PLANNED,
+-            progressPercentage = 0,
+-            milestones = listOf(
+-                Milestone("M1", "Initial Work Site Preparation & Clearance", startDate, false),
+-                Milestone("M2", "Core Infrastructure Laying", completionDate, false)
+-            )
+-        )
+-        projects.add(0, newProject)
+-        addAuditLog("Project Registered", officerInCharge, "Project", newId, "Title: $title, Budget: ₹$budgetLakhs Lakhs")
+-        return newProject
++    private fun clearIdentity() {
++        identityGeneration++; snapshot = CivicSnapshot(emptyMap())
++        currentUser = null; projects.clear(); complaints.clear(); conflicts.clear(); handovers.clear()
++        users.clear(); auditLogs.clear(); deadlineRequests.clear(); lastRefresh = null; stale = true
+     }
+-
+-    fun recordDelay(projectId: String, reason: String, revisedDate: String, explanation: String, officerName: String) {
+-        val index = projects.indexOfFirst { it.id == projectId }
+-        if (index != -1) {
+-            val p = projects[index]
+-            val newRecord = DelayRecord(
+-                id = "DR-${System.currentTimeMillis()}",
+-                projectId = projectId,
+-                dateRecorded = "Today",
+-                reason = reason,
+-                originalCompletionDate = p.originalCompletionDate,
+-                revisedCompletionDate = revisedDate,
+-                publishedExplanation = explanation,
+-                recordedBy = officerName
+-            )
+-            val updatedHistory = p.delayHistory + newRecord
+-            projects[index] = p.copy(
+-                revisedCompletionDate = revisedDate,
+-                status = ProjectStatus.DELAYED,
+-                delayHistory = updatedHistory
+-            )
+-            addAuditLog("Project Delay Recorded", officerName, "Project", projectId, "Revised Date: $revisedDate, Reason: $reason")
+-        }
++    suspend fun login(email: String, password: String) {
++        clearIdentity(); backend.client.auth.clearSession(); backend.login(email, password)
++        try { refresh() } catch (e: Exception) { backend.client.auth.clearSession(); clearIdentity(); throw e }
+     }
+-
+-    fun submitProgressReport(
+-        projectId: String,
+-        milestoneId: String,
+-        submittedBy: String,
+-        completionPct: Int,
+-        workDone: String,
+-        remainingWork: String,
+-        obstacles: String?
+-    ): ProgressReport {
+-        val newReport = ProgressReport(
+-            id = "PR-${System.currentTimeMillis()}",
+-            projectId = projectId,
+-            milestoneId = milestoneId,
+-            submittedBy = submittedBy,
+-            submissionDate = "Today",
+-            completionPercentage = completionPct,
+-            workCompleted = workDone,
+-            remainingWork = remainingWork,
+-            obstacles = obstacles,
+-            status = "Pending Verification"
+-        )
+-        val index = projects.indexOfFirst { it.id == projectId }
+-        if (index != -1) {
+-            val p = projects[index]
+-            val updatedReports = p.progressReports + newReport
+-            projects[index] = p.copy(progressReports = updatedReports)
++    suspend fun logout() {
++        clearIdentity()
++        try { backend.client.auth.signOut() }
++        catch (e: CancellationException) { throw e }
++        catch (_: Exception) { /* Clear local session even offline. */ }
++        finally { backend.client.auth.clearSession() }
++    }
++    suspend fun resetPassword(email: String) {
++        require(email.contains('@')) { "Enter your account email." }
++        backend.client.auth.resetPasswordForEmail(email.trim(), redirectUrl = "civic://auth-callback")
++    }
++    suspend fun setPassword(password: String) {
++        require(password.length >= 8) { "Use a password of at least 8 characters." }
++        backend.client.auth.updateUser { this.password = password }
++        recoverPassword = false
++    }
++    suspend fun signUp(email: String, password: String) {
++        require(email.contains('@') && password.length >= 8) { "Enter an email and a password of at least 8 characters." }
++        backend.client.auth.signUpWith(Email) { this.email = email.trim(); this.password = password }
++    }
++    suspend fun continueAsGuest() { if (currentUser != null) logout(); refresh() }
++    private suspend fun requireCitizen() {
++        if (backend.client.auth.currentUserOrNull() == null) { backend.client.auth.signInAnonymously(); refresh() }
++        check(currentUser?.role == UserRole.CITIZEN) { "Use a citizen account for this action." }
++    }
++    fun evaluateComplaintDeadlines(currentTimeMillis: Long = System.currentTimeMillis()) {
++        // The database scheduler owns escalation, event history and deadlines.
++    }
++    suspend fun findProject(id: String): Project? {
++        val row = backend.rows("projects", id).singleOrNull()
++        refresh(); return row?.let { projects.find { project -> project.id == it.text("id") } }
++    }
++    private suspend fun mutate(name: String, params: JsonObject): String? {
++        val result = backend.rpc(name, params)
++        try { refresh() } catch (e: CancellationException) { throw e }
++        catch (_: Exception) { error = "Saved on the server, but refresh failed. Tap Refresh to load the latest data." }
++        return result
++    }
++    suspend fun toggleProjectFollow(projectId: String) {
++        requireCitizen()
++        mutate("set_follow", arguments("p_project" to projectId, "p_follow" to (projects.find { it.id == projectId }?.isFollowed != true)))
++    }
++    suspend fun submitComplaint(category: ComplaintCategory, projectId: String?, projectTitle: String?, location: String,
++        district: String, description: String, photoUri: String?, citizenName: String): Complaint {
++        requireCitizen()
++        val jurisdiction = if (projectId == null) jurisdictions.singleOrNull { it.kind == "MUNICIPALITY" && it.name == district }?.id else null
++        check(projectId != null || jurisdiction != null) { "Select a project or a specific municipality for complaint routing." }
++        val id = checkNotNull(mutate("submit_complaint", arguments("p_category" to category.name, "p_location" to location,
++            "p_description" to description, "p_project" to projectId, "p_jurisdiction" to jurisdiction)))
++        return complaints.find { it.id == id } ?: backend.rows("complaints", id).single().let(snapshot::complaint)
++    }
++    suspend fun respondToComplaint(complaintId: String, decision: ComplaintStatus, responseText: String,
++        officerName: String, officerRole: String = "Government Officer") {
++        mutate("respond_complaint", arguments("p_complaint" to complaintId, "p_status" to decision.name, "p_message" to responseText))
++    }
++    suspend fun requestCitizenInformation(complaintId: String, requestText: String, officerName: String) =
++        respondToComplaint(complaintId, ComplaintStatus.AWAITING_CITIZEN_INFO, requestText, officerName)
++    suspend fun replyComplaint(id: String, message: String) { mutate("reply_complaint", arguments("p_complaint" to id, "p_message" to message)) }
++    suspend fun registerProject(title: String, description: String, department: String, district: String, municipalBody: String,
++        location: String, contractorName: String, responsibleOffice: String, officerInCharge: String, budgetLakhs: Double,
++        fundingSource: String, startDate: String, completionDate: String, latitude: Double, longitude: Double): String {
++        fun catalogId(items: List<CivicCatalogEntry>, name: String) = checkNotNull(items.singleOrNull { it.active && it.name == name }) {
++            "Choose a registered catalog entry: $name" }.id
++        val start = CivicDates.input(startDate); val end = CivicDates.input(completionDate)
++        val data = arguments("title" to title, "description" to description, "department_id" to catalogId(departments, department),
++            "district" to district, "municipal_body_id" to catalogId(jurisdictions.filter { it.kind == "MUNICIPALITY" }, municipalBody),
++            "location" to location, "latitude" to latitude, "longitude" to longitude,
++            "contractor_id" to catalogId(contractors, contractorName),
++            "responsible_office_id" to catalogId(jurisdictions.filter { it.kind == "OFFICE" }, responsibleOffice),
++            "estimated_budget_in_lakhs" to budgetLakhs, "funding_source" to fundingSource, "start_date" to start, "original_completion_date" to end)
++        val milestones = JsonArray(listOf(arguments("milestone_id" to "M1", "title" to "Initial Work Site Preparation & Clearance", "target_date" to start),
++            arguments("milestone_id" to "M2", "title" to "Core Infrastructure Laying", "target_date" to end)))
++        return checkNotNull(mutate("register_project", arguments("p_data" to data, "p_milestones" to milestones)))
++    }
++    suspend fun publishProject(id: String, publish: Boolean) { mutate("publish_project", arguments("p_project" to id, "p_publish" to publish)) }
++    fun isPublished(id: String) = snapshot.rows("projects").find { it.text("id") == id }?.flag("is_published") == true
++    suspend fun recordDelay(projectId: String, reason: String, revisedDate: String, explanation: String, officerName: String) {
++        mutate("record_delay", arguments("p_project" to projectId, "p_date" to CivicDates.input(revisedDate), "p_reason" to reason, "p_explanation" to explanation))
++    }
++    suspend fun submitProgressReport(projectId: String, milestoneId: String, submittedBy: String, completionPct: Int,
++        workDone: String, remainingWork: String, obstacles: String?): String = checkNotNull(mutate("submit_progress",
++        arguments("p_project" to projectId, "p_milestone" to milestoneId, "p_percentage" to completionPct,
++            "p_completed" to workDone, "p_remaining" to remainingWork, "p_obstacles" to obstacles)))
++    suspend fun verifyProgressReport(projectId: String, reportId: String, approve: Boolean, officerNotes: String, officerName: String) {
++        mutate("review_progress", arguments("p_report" to reportId, "p_decision" to if (approve) "Approved" else "Correction Requested",
++            "p_notes" to officerNotes, "p_publish" to approve))
++    }
++    suspend fun requestDeadline(project: String, date: String, reason: String): String = checkNotNull(
++        mutate("request_deadline", arguments("p_project" to project, "p_date" to CivicDates.input(date), "p_reason" to reason)))
++    suspend fun reviewDeadline(request: String, approve: Boolean, notes: String) {
++        mutate("review_deadline", arguments("p_request" to request, "p_approve" to approve, "p_notes" to notes))
++    }
++    suspend fun initiateHandover(outgoingName: String, outgoingEmail: String, incomingName: String, incomingEmail: String,
++        department: String, jurisdiction: String, transferDate: String, reason: String, notes: String): String {
++        val incoming = users.singleOrNull { it.email.equals(incomingEmail, true) && it.role == UserRole.OFFICER }
++        val incomingId = incoming?.id ?: incomingEmail.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
++        checkNotNull(incomingId) { "Enter the incoming officer's verified user UUID (available from the administrator)." }
++        val selected = assignedProjects.filter { it.responsibleOffice == jurisdiction && it.department == department }
++        check(selected.isNotEmpty()) { "No projects assigned to you in this office." }
++        val selectedIds = selected.map { it.id }.toSet()
++        val tasks = selected.flatMap { project -> project.progressReports.filter { it.status == "Pending Verification" }.map { report ->
++            arguments("project_id" to project.id, "title" to "Verify progress report ${report.id}",
++                "priority" to "Medium", "due_date" to CivicDates.input(transferDate))
++        } } + snapshot.rows("complaints").filter { it.text("project_id") in selectedIds &&
++            it.text("status") !in listOf("RESOLVED", "REJECTED") }.map { complaint ->
++            arguments("project_id" to complaint.text("project_id"), "title" to "Review complaint ${complaint.text("id")}",
++                "priority" to if (complaint.text("priority") == "HIGH") "High" else "Medium",
++                "due_date" to complaint.text("deadline_at").take(10))
+         }
+-        addAuditLog("Progress Report Submitted", submittedBy, "ProgressReport", newReport.id, "Project: $projectId, Completion: $completionPct%")
+-        return newReport
++        require(tasks.size <= 100) { "This office has more than 100 pending tasks. Complete or split the handover before submitting." }
++        return checkNotNull(mutate("initiate_handover", arguments("p_incoming" to incomingId, "p_projects" to selected.map { it.id },
++            "p_effective" to CivicDates.input(transferDate), "p_reason" to reason, "p_notes" to notes, "p_tasks" to JsonArray(tasks))))
+     }
+-
+-    fun verifyProgressReport(projectId: String, reportId: String, approve: Boolean, officerNotes: String, officerName: String) {
+-        val projIndex = projects.indexOfFirst { it.id == projectId }
+-        if (projIndex != -1) {
+-            val p = projects[projIndex]
+-            val rList = p.progressReports.map { report ->
+-                if (report.id == reportId) {
+-                    report.copy(
+-                        status = if (approve) "Approved" else "Correction Requested",
+-                        officerNotes = officerNotes
+-                    )
+-                } else report
+-            }
+-            val targetReport = p.progressReports.find { it.id == reportId }
+-            val newProgressPct = if (approve && targetReport != null) {
+-                maxOf(p.progressPercentage, targetReport.completionPercentage)
+-            } else p.progressPercentage
+-
+-            val newStatus = if (newProgressPct >= 100) ProjectStatus.COMPLETED else p.status
+-
+-            projects[projIndex] = p.copy(
+-                progressReports = rList,
+-                progressPercentage = newProgressPct,
+-                status = newStatus
+-            )
+-            addAuditLog("Progress Report Verified", officerName, "ProgressReport", reportId, "Approved: $approve, Project Progress: $newProgressPct%")
++    suspend fun acknowledgeHandover(handoverId: String, incomingName: String) { answerHandover(handoverId, true, null) }
++    suspend fun answerHandover(id: String, acknowledge: Boolean, clarification: String?) {
++        mutate("answer_handover", arguments("p_handover" to id, "p_acknowledge" to acknowledge, "p_clarification" to clarification))
++    }
++    suspend fun resolveConflict(conflictId: String, resolutionText: String, coordinatorName: String) {
++        mutate("resolve_conflict", arguments("p_conflict" to conflictId, "p_resolution" to resolutionText))
++    }
++    suspend fun recordConflict(a: String, b: String, type: ConflictType, location: String, dates: String, resolution: String?) {
++        mutate("record_conflict", arguments("p_a" to a, "p_b" to b, "p_type" to type.name,
++            "p_location" to location, "p_dates" to dates, "p_resolution" to resolution))
++    }
++    suspend fun updatePreferences(notifications: Boolean = notificationsEnabled) {
++        val user = currentUser ?: return
++        mutate("update_my_profile", arguments("p_name" to user.name, "p_language" to currentLanguage.name, "p_notifications" to notifications))
++    }
++    suspend fun setUser(user: User, role: UserRole = user.role, active: Boolean = user.isActive) {
++        val row = snapshot.rows("profiles").single { it.text("id") == user.id }
++        check(role == user.role) { "Use the authorization form to change a role." }
++        val oldScopes = snapshot.rows("profile_scopes").filter { it.text("profile_id") == user.id }
++        mutate("admin_set_user", arguments("p_user" to user.id, "p_role" to role.name, "p_active" to active,
++            "p_department" to row.optional("department_id"), "p_office" to row.optional("office_jurisdiction_id"),
++            "p_contractor" to if (role == UserRole.CONTRACTOR) row.optional("contractor_id") else null))
++        if (active && role in listOf(UserRole.OFFICER, UserRole.COORDINATOR)) {
++            oldScopes.forEach { backend.rpc("admin_set_scope", arguments("p_user" to user.id,
++                "p_department" to it.text("department_id"), "p_jurisdiction" to it.text("jurisdiction_id"), "p_grant" to true)) }
++            refresh()
+         }
+     }
+-
+-    fun initiateHandover(
+-        outgoingName: String,
+-        outgoingEmail: String,
+-        incomingName: String,
+-        incomingEmail: String,
+-        department: String,
+-        jurisdiction: String,
+-        transferDate: String,
+-        reason: String,
+-        notes: String
+-    ): OfficerHandover {
+-        val assignedCount = projects.count { it.responsibleOffice.contains(jurisdiction, ignoreCase = true) || it.currentOfficerInCharge.contains(outgoingName, ignoreCase = true) }
+-        val newHandover = OfficerHandover(
+-            id = "HO-2026-${(100..999).random()}",
+-            outgoingOfficerName = outgoingName,
+-            outgoingOfficerEmail = outgoingEmail,
+-            incomingOfficerName = incomingName,
+-            incomingOfficerEmail = incomingEmail,
+-            department = department,
+-            officeJurisdiction = jurisdiction,
+-            effectiveTransferDate = transferDate,
+-            reasonForReassignment = reason,
+-            assignedProjectsCount = maxOf(assignedCount, 1),
+-            pendingTasksCount = 2,
+-            pendingTasks = listOf(
+-                PendingTask("PT-A", "Verify pending project milestones", "TN-PWD-2025-01", "High", transferDate),
+-                PendingTask("PT-B", "Review unresolved complaints in $jurisdiction", "TN-PWD-2025-01", "Medium", transferDate)
+-            ),
+-            handoverNotes = notes,
+-            status = HandoverStatus.INITIATED
+-        )
+-        handovers.add(0, newHandover)
+-        addAuditLog("Officer Handover Initiated", outgoingName, "OfficerHandover", newHandover.id, "Transfer to $incomingName ($jurisdiction)")
+-        return newHandover
++    fun profileIds(user: User): Triple<String, String, String> {
++        val row = snapshot.rows("profiles").find { it.text("id") == user.id }
++        return Triple(row?.text("department_id").orEmpty(), row?.text("office_jurisdiction_id").orEmpty(), row?.text("contractor_id").orEmpty())
+     }
+-
+-    fun acknowledgeHandover(handoverId: String, incomingName: String) {
+-        val index = handovers.indexOfFirst { it.id == handoverId }
+-        if (index != -1) {
+-            val ho = handovers[index]
+-            handovers[index] = ho.copy(
+-                status = HandoverStatus.ACKNOWLEDGED,
+-                acknowledgedDate = "Today"
+-            )
+-
+-            // Update assigned officer in corresponding projects while PRESERVING responsible office & history
+-            projects.indices.forEach { i ->
+-                val p = projects[i]
+-                if (p.responsibleOffice.contains(ho.officeJurisdiction, ignoreCase = true) || p.currentOfficerInCharge.contains(ho.outgoingOfficerName, ignoreCase = true)) {
+-                    projects[i] = p.copy(
+-                        currentOfficerInCharge = "${ho.incomingOfficerName} (Formerly ${ho.outgoingOfficerName})"
+-                    )
++    suspend fun authorizeUser(user: User, role: UserRole, department: String?, office: String?, contractor: String?) {
++        mutate("admin_set_user", arguments("p_user" to user.id, "p_role" to role.name, "p_active" to user.isActive,
++            "p_department" to department, "p_office" to office, "p_contractor" to contractor))
++    }
++    suspend fun grantScope(user: User, department: String, jurisdiction: String, grant: Boolean) {
++        mutate("admin_set_scope", arguments("p_user" to user.id, "p_department" to department,
++            "p_jurisdiction" to jurisdiction, "p_grant" to grant))
++    }
++    suspend fun addUser(name: String, email: String, role: UserRole, department: String?, jurisdiction: String?) {
++        backend.invite(name, email); refresh()
++    }
++    suspend fun uploadAttachment(context: Context, uri: String?, bucket: String, record: String) {
++        if (uri == null) return
++        val file = withContext(Dispatchers.IO) {
++            val parsed = Uri.parse(uri)
++            val type = context.contentResolver.getType(parsed) ?: error("Unable to determine file type.")
++            val bytes = context.contentResolver.openInputStream(parsed)?.use { stream ->
++                val output = java.io.ByteArrayOutputStream()
++                val buffer = ByteArray(8192)
++                while (true) {
++                    val count = stream.read(buffer); if (count < 0) break
++                    output.write(buffer, 0, count)
++                    require(output.size() <= 10 * 1024 * 1024) { "Attachment must be 10 MB or smaller." }
+                 }
+-            }
+-
+-            addAuditLog("Officer Handover Acknowledged", incomingName, "OfficerHandover", handoverId, "Project history & office records preserved. Active officer updated.")
++                output.toByteArray()
++            } ?: error("Unable to read the selected file.")
++            bytes to type
+         }
+-    }
+-
+-    fun resolveConflict(conflictId: String, resolutionText: String, coordinatorName: String) {
+-        val index = conflicts.indexOfFirst { it.id == conflictId }
+-        if (index != -1) {
+-            val c = conflicts[index]
+-            conflicts[index] = c.copy(
+-                status = ConflictStatus.RESOLVED,
+-                proposedResolution = resolutionText,
+-                resolvedDate = "Today"
+-            )
+-            addAuditLog("Schedule Conflict Resolved", coordinatorName, "ScheduleConflict", conflictId, "Resolution: $resolutionText")
++        try { backend.attach(bucket, record, file.first, file.second); refresh() }
++        catch (e: CancellationException) { throw e }
++        catch (e: Exception) {
++            throw IllegalStateException("Record $record is saved. Its attachment could not be completed. Check this record before retrying; keep this screen open to retry the attachment.", e)
+         }
+     }
+-
+-    fun addUser(name: String, email: String, role: UserRole, department: String?, jurisdiction: String?) {
+-        val newUser = User(
+-            id = "U${users.size + 1}",
+-            name = name,
+-            email = email,
+-            role = role,
+-            department = department,
+-            officeJurisdiction = jurisdiction,
+-            isDemoAccount = false
+-        )
+-        users.add(newUser)
+-        addAuditLog("User Added", "Admin", "User", newUser.id, "Name: $name, Role: ${role.labelEn}")
+-    }
+-
+-    private fun addAuditLog(action: String, performedBy: String, targetType: String, targetId: String, details: String) {
+-        val log = AuditLogEntry(
+-            id = "AL-${System.currentTimeMillis()}",
+-            timestamp = "Today",
+-            action = action,
+-            performedBy = performedBy,
+-            targetType = targetType,
+-            targetId = targetId,
+-            details = details
+-        )
+-        auditLogs.add(0, log)
++    suspend fun validateAttachment(context: Context, uri: String?, pdf: Boolean = false) {
++        if (uri == null) return
++        withContext(Dispatchers.IO) {
++            val parsed = Uri.parse(uri)
++            val allowed = if (pdf) setOf("application/pdf") else setOf("image/jpeg", "image/png", "image/webp")
++            require(context.contentResolver.getType(parsed) in allowed) { "Choose a supported JPEG, PNG, WebP image or PDF document." }
++            context.contentResolver.openInputStream(parsed)?.use { stream ->
++                var size = 0L
++                val buffer = ByteArray(8192)
++                while (true) {
++                    val count = stream.read(buffer); if (count < 0) break
++                    size += count
++                    require(size <= 10 * 1024 * 1024) { "Attachment must be 10 MB or smaller." }
++                }
++                require(size > 0) { "The selected file is empty." }
++            } ?: error("Unable to read the selected file.")
++        }
+     }
++    suspend fun image(bucket: String, path: String): ByteArray = backend.client.storage.from(bucket).downloadAuthenticated(path)
++    private fun <T> MutableList<T>.replace(items: List<T>) { clear(); addAll(items) }
+ }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\data\\models\\Project.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\data\\models\\Project.kt"
+index c655bf5..c6ad39b 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\data\\models\\Project.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\data\\models\\Project.kt"
+@@ -66,4 +66,5 @@ data class Project(
+     val progressReports: List<ProgressReport> = emptyList(),
+     val delayHistory: List<DelayRecord> = emptyList(),
+-    val isFollowed: Boolean = false
++    val isFollowed: Boolean = false,
++    val isDemo: Boolean = false
+ )
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\components\\ProjectCard.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\components\\ProjectCard.kt"
+index bd1b5b0..796c12b 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\components\\ProjectCard.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\components\\ProjectCard.kt"
+@@ -43,4 +43,6 @@ fun ProjectCard(
+     ) {
+         Column(modifier = Modifier.padding(16.dp)) {
++            if (project.isDemo) Text(if (isTa) "எடுத்துக்காட்டு திட்டம்" else "Demonstration project",
++                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             // Top Row: Status Badge, Department, Pin Icon
+             Row(
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\navigation\\CivicNavHost.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\navigation\\CivicNavHost.kt"
+index e778d46..f8b1ffb 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\navigation\\CivicNavHost.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\navigation\\CivicNavHost.kt"
+@@ -2,4 +2,8 @@ package com.example.civic.ui.navigation
+ 
+ import androidx.compose.foundation.layout.WindowInsets
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.ui.Alignment
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.ui.unit.dp
+@@ -25,4 +29,8 @@ import com.example.civic.ui.screens.official.*
+ import com.example.civic.ui.screens.officer.*
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.delay
++import androidx.lifecycle.compose.LocalLifecycleOwner
++import androidx.lifecycle.Lifecycle
++import androidx.lifecycle.repeatOnLifecycle
+ 
+ @Composable
+@@ -38,4 +46,22 @@ fun CivicNavHost(
+     val currentUser = CivicDataRepository.currentUser
+     val currentRole = currentUser?.role ?: UserRole.CITIZEN
++    val lifecycle = LocalLifecycleOwner.current.lifecycle
++    LaunchedEffect(lifecycle) {
++        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
++            while (true) {
++                delay(30_000)
++                if (CivicDataRepository.ready && !CivicDataRepository.loading && !CivicDataRepository.working)
++                    CivicDataRepository.launchOperation { CivicDataRepository.refresh() }
++            }
++        }
++    }
++    LaunchedEffect(currentUser?.id, currentRoute) {
++        if (currentUser != null && currentRoute in listOf(Screen.Welcome.route, Screen.LoginTypeSelect.route,
++                Screen.CitizenLogin.route, Screen.OfficerLogin.route, Screen.CoordinatorLogin.route, Screen.ContractorLogin.route, Screen.AdminLogin.route)) {
++            navController.navigate(if (currentRole == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
++                popUpTo(0) { inclusive = true }
++            }
++        }
++    }
+ 
+     val showBottomBar = currentRoute in listOf(
+@@ -72,8 +98,10 @@ fun CivicNavHost(
+ 
+     fun handleLogout() {
+-        coroutineScope.launch { drawerState.close() }
+-        CivicDataRepository.currentUser = null
+-        navController.navigate(Screen.Welcome.route) {
+-            popUpTo(0) { inclusive = true }
++        CivicDataRepository.launchOperation {
++            drawerState.close()
++            CivicDataRepository.logout()
++            navController.navigate(Screen.Welcome.route) {
++                popUpTo(0) { inclusive = true }
++            }
+         }
+     }
+@@ -94,4 +122,5 @@ fun CivicNavHost(
+     ) {
+         Scaffold(
++            topBar = { BackendStatus() },
+             contentWindowInsets = WindowInsets(0.dp),
+             bottomBar = {
+@@ -112,5 +141,7 @@ fun CivicNavHost(
+                 composable(Screen.Splash.route) {
+                     SplashScreen(onNavigateToWelcome = {
+-                        navController.navigate(Screen.Welcome.route) {
++                        navController.navigate(if (CivicDataRepository.currentUser == null) Screen.Welcome.route
++                            else if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route
++                            else Screen.OfficialDashboard.route) {
+                             popUpTo(Screen.Splash.route) { inclusive = true }
+                         }
+@@ -121,13 +152,10 @@ fun CivicNavHost(
+                     WelcomeScreen(
+                         onContinueAsGuest = {
+-                            CivicDataRepository.currentUser = User(
+-                                id = "GUEST-001",
+-                                name = "Guest Citizen",
+-                                email = "guest@civictech.tn.gov.in",
+-                                role = UserRole.CITIZEN
+-                            )
++                            CivicDataRepository.launchOperation {
++                            CivicDataRepository.continueAsGuest()
+                             navController.navigate(Screen.CitizenDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
++                            }
+                         },
+                         onLoginClick = {
+@@ -156,5 +184,6 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onLoginSuccess = {
+-                            navController.navigate(Screen.CitizenDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN)
++                                Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
+@@ -167,5 +196,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onLoginSuccess = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
+@@ -178,5 +207,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onLoginSuccess = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
+@@ -189,5 +218,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onLoginSuccess = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
+@@ -200,5 +229,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onLoginSuccess = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.Welcome.route) { inclusive = true }
+                             }
+@@ -413,5 +442,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onProgressSubmitted = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.OfficialDashboard.route)
+                             }
+@@ -424,5 +453,5 @@ fun CivicNavHost(
+                         onNavigateBack = { navController.popBackStack() },
+                         onRequestSubmitted = {
+-                            navController.navigate(Screen.OfficialDashboard.route) {
++                            navController.navigate(if (CivicDataRepository.currentUser?.role == UserRole.CITIZEN) Screen.CitizenDashboard.route else Screen.OfficialDashboard.route) {
+                                 popUpTo(Screen.OfficialDashboard.route)
+                             }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\qr\\ProjectQRUtils.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\qr\\ProjectQRUtils.kt"
+index bed4e23..e26b67b 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\qr\\ProjectQRUtils.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\qr\\ProjectQRUtils.kt"
+@@ -31,6 +31,5 @@ object ProjectQRUtils {
+     }
+ 
+-    // OfficerMyProjectsScreen currently exposes all projects to the OFFICER role.
+-    // Keep that existing scope rather than inventing assignment rules here.
++    // Caller supplies the backend-authorized managed project set.
+     fun managedProjects(user: User?, projects: List<Project>): List<Project> =
+         if (user?.role == UserRole.OFFICER && user.isActive) projects else emptyList()
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminDashboardScreen.kt"
+index b0a8d7d..80d1825 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminDashboardScreen.kt"
+@@ -115,5 +115,5 @@ fun AdminDashboardScreen(
+                 MetricCard(
+                     title = if (isTa) "துறைகள்" else "Departments",
+-                    value = "5 Active",
++                    value = CivicDataRepository.departments.count { it.active }.toString(),
+                     icon = Icons.Default.Business,
+                     containerColor = CivicWarningContainer,
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminSettingsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminSettingsScreen.kt"
+index f2f12b7..bc8aac3 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminSettingsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\AdminSettingsScreen.kt"
+@@ -18,6 +18,6 @@ fun AdminSettingsScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    var notificationsEnabled by remember { mutableStateOf(true) }
+-    var autoAuditEnabled by remember { mutableStateOf(true) }
++    val notificationsEnabled = CivicDataRepository.notificationsEnabled
++    val autoAuditEnabled = true
+ 
+     Scaffold(
+@@ -52,6 +52,8 @@ fun AdminSettingsScreen(
+                         verticalAlignment = Alignment.CenterVertically
+                     ) {
+-                        Text("SMS / Email Public Notifications")
+-                        Switch(checked = notificationsEnabled, onCheckedChange = { notificationsEnabled = it })
++                        Text("Account Notification Preference")
++                        Switch(checked = notificationsEnabled, onCheckedChange = { value ->
++                            CivicDataRepository.launchOperation { CivicDataRepository.updatePreferences(value) }
++                        })
+                     }
+ 
+@@ -64,5 +66,5 @@ fun AdminSettingsScreen(
+                     ) {
+                         Text("Automatic Audit Log Tracking")
+-                        Switch(checked = autoAuditEnabled, onCheckedChange = { autoAuditEnabled = it })
++                        Switch(checked = autoAuditEnabled, onCheckedChange = null)
+                     }
+                 }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\DepartmentManagementScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\DepartmentManagementScreen.kt"
+index 55a09ca..2192c09 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\DepartmentManagementScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\DepartmentManagementScreen.kt"
+@@ -18,11 +18,5 @@ fun DepartmentManagementScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val depts = listOf(
+-        "Public Works Department (PWD)" to "Highways, Buildings, Water Bodies",
+-        "TWAD Board" to "Tamil Nadu Water Supply & Drainage Board",
+-        "Highways Department" to "State Highways, Major District Roads",
+-        "Municipal Administration & Water Supply" to "Corporations, Municipalities, Panchayats",
+-        "TANGEDCO" to "Electricity Board Power Line Relocation"
+-    )
++    val depts = CivicDataRepository.departments.map { it.name to it.details }
+ 
+     Scaffold(
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\JurisdictionsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\JurisdictionsScreen.kt"
+index 461594a..401de0e 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\JurisdictionsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\JurisdictionsScreen.kt"
+@@ -18,11 +18,5 @@ fun JurisdictionsScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val jurisdictions = listOf(
+-        "Greater Chennai Corporation" to "38 Wards, Metro Circle",
+-        "Coimbatore Municipal Corporation" to "East, West, South, North Zones",
+-        "Madurai Corporation" to "Vaigai Circle, Central Zone",
+-        "Tiruchirappalli Corporation" to "Srirangam & Golden Rock Zones",
+-        "Salem City Municipal Corporation" to "Zone 1, 2, 3, 4 Divisions"
+-    )
++    val jurisdictions = CivicDataRepository.jurisdictions.map { it.name to it.details }
+ 
+     Scaffold(
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\UserManagementScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\UserManagementScreen.kt"
+index 643bf34..05dd025 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\UserManagementScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\admin\\UserManagementScreen.kt"
+@@ -27,8 +27,8 @@ fun UserManagementScreen(
+     val users = CivicDataRepository.users
+     var showAddUserDialog by remember { mutableStateOf(false) }
++    var editingUser by remember { mutableStateOf<com.example.civic.data.models.User?>(null) }
+ 
+     var newName by remember { mutableStateOf("") }
+     var newEmail by remember { mutableStateOf("") }
+-    var selectedRole by remember { mutableStateOf(UserRole.OFFICER) }
+ 
+     Scaffold(
+@@ -43,5 +43,5 @@ fun UserManagementScreen(
+                 onClick = { showAddUserDialog = true },
+                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
+-                text = { Text(if (isTa) "புதிய பயனர்" else "Add User") }
++                text = { Text(if (isTa) "பயனரை அழைக்கவும்" else "Invite User") }
+             )
+         }
+@@ -117,5 +117,5 @@ fun UserManagementScreen(
+                             ) {
+                                 OutlinedButton(
+-                                    onClick = { },
++                                    onClick = { editingUser = user },
+                                     modifier = Modifier.weight(1f)
+                                 ) {
+@@ -126,10 +126,10 @@ fun UserManagementScreen(
+ 
+                                 OutlinedButton(
+-                                    onClick = { },
++                                    onClick = { CivicDataRepository.launchOperation { CivicDataRepository.setUser(user, active = !user.isActive) } },
+                                     modifier = Modifier.weight(1f)
+                                 ) {
+                                     Icon(Icons.Default.Badge, contentDescription = null, modifier = Modifier.size(14.dp))
+                                     Spacer(modifier = Modifier.width(4.dp))
+-                                    Text("Toggle Status", fontSize = 11.sp)
++                                    Text(if (user.isActive) "Disable + clear scopes" else "Enable", fontSize = 11.sp)
+                                 }
+                             }
+@@ -144,7 +144,8 @@ fun UserManagementScreen(
+         AlertDialog(
+             onDismissRequest = { showAddUserDialog = false },
+-            title = { Text("Add New System User") },
++            title = { Text(if (isTa) "பயனரை அழைக்கவும்" else "Invite New User") },
+             text = {
+                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Text(if (isTa) "மின்னஞ்சல் உறுதிப்படுத்திய பிறகு பங்கு மற்றும் அதிகார வரம்பை அமைக்கவும்." else "An email invitation creates a citizen account. Assign its role and scope after email confirmation.")
+                     OutlinedTextField(
+                         value = newName,
+@@ -164,11 +165,12 @@ fun UserManagementScreen(
+                 Button(
+                     onClick = {
++                    CivicDataRepository.launchOperation {
+                         if (newName.isNotBlank() && newEmail.isNotBlank()) {
+                             CivicDataRepository.addUser(
+                                 name = newName,
+                                 email = newEmail,
+-                                role = selectedRole,
+-                                department = "Public Works Department",
+-                                jurisdiction = "Chennai Zone"
++                                role = UserRole.CITIZEN,
++                                department = null,
++                                jurisdiction = null
+                             )
+                             showAddUserDialog = false
+@@ -176,7 +178,9 @@ fun UserManagementScreen(
+                             newEmail = ""
+                         }
++                    
+                     }
++                }
+                 ) {
+-                    Text("Add User")
++                    Text(if (isTa) "அழைப்பு அனுப்பு" else "Send invitation")
+                 }
+             },
+@@ -188,3 +192,6 @@ fun UserManagementScreen(
+         )
+     }
++    editingUser?.let { user ->
++        UserAuthorizationDialog(user, onDismiss = { editingUser = null })
++    }
+ }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\RoleLoginScreens.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\RoleLoginScreens.kt"
+index 58852d0..c4f9704 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\RoleLoginScreens.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\RoleLoginScreens.kt"
+@@ -56,5 +56,5 @@ fun CitizenLoginScreen(
+                 value = mobileOrEmail,
+                 onValueChange = { mobileOrEmail = it },
+-                label = { Text(if (isTa) "கைபேசி எண் / மின்னஞ்சல்" else "Mobile Number or Email") },
++                label = { Text(if (isTa) "கைபேசி எண் / மின்னஞ்சல்" else "Email Address") },
+                 leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                 modifier = Modifier.fillMaxWidth(),
+@@ -76,9 +76,9 @@ fun CitizenLoginScreen(
+                 horizontalArrangement = Arrangement.SpaceBetween
+             ) {
+-                TextButton(onClick = { showDialogText = "Password reset instructions have been sent to your registered mobile number." }) {
++                TextButton(onClick = { CivicDataRepository.launchOperation { CivicDataRepository.resetPassword(mobileOrEmail); showDialogText = "If this email is registered, reset instructions have been sent." } }) {
+                     Text(if (isTa) "கடவுச்சொல் மறந்ததா?" else "Forgot Password?")
+                 }
+ 
+-                TextButton(onClick = { showDialogText = "Citizen registration account form opened. Demo accounts can log in directly." }) {
++                TextButton(onClick = { CivicDataRepository.launchOperation { CivicDataRepository.signUp(mobileOrEmail, password); password = ""; showDialogText = "Check your email to confirm your citizen account, then sign in." } }) {
+                     Text(if (isTa) "புதிய கணக்கு உருவாக்கு" else "Create Account")
+                 }
+@@ -87,11 +87,9 @@ fun CitizenLoginScreen(
+             Button(
+                 onClick = {
+-                    CivicDataRepository.currentUser = User(
+-                        id = "U-CITIZEN",
+-                        name = "S. Karthik (Citizen)",
+-                        email = if (mobileOrEmail.contains("@")) mobileOrEmail else "citizen.karthik@gmail.com",
+-                        role = UserRole.CITIZEN
+-                    )
+-                    onLoginSuccess()
++                    CivicDataRepository.launchOperation {
++                        CivicDataRepository.login(mobileOrEmail, password)
++                        password = ""
++                        onLoginSuccess()
++                    }
+                 },
+                 modifier = Modifier
+@@ -106,8 +104,5 @@ fun CitizenLoginScreen(
+             ElevatedButton(
+                 onClick = {
+-                    mobileOrEmail = "9876543210"
+-                    password = "demoPassword"
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.CITIZEN }
+-                    onLoginSuccess()
++                    mobileOrEmail = "test@gmail.com"
+                 },
+                 colors = ButtonDefaults.elevatedButtonColors(
+@@ -121,5 +116,5 @@ fun CitizenLoginScreen(
+                 Icon(Icons.Default.PlayArrow, contentDescription = null)
+                 Spacer(modifier = Modifier.width(8.dp))
+-                Text(if (isTa) "மாதிரி உள்நுழைவு (Demo Login)" else "Demo Login as Citizen", fontSize = 15.sp, fontWeight = FontWeight.Bold)
++                Text(if (isTa) "மாதிரி உள்நுழைவு (Test Email)" else "Use Test Email for Citizen", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+             }
+         }
+@@ -250,13 +245,9 @@ fun OfficerLoginScreen(
+             Button(
+                 onClick = {
+-                    CivicDataRepository.currentUser = User(
+-                        id = "U-OFFICER",
+-                        name = if (username.isNotBlank()) username else "Er. R. Kanimozhi",
+-                        email = "officer.kanimozhi@pwd.tn.gov.in",
+-                        role = UserRole.OFFICER,
+-                        department = selectedDept,
+-                        officeJurisdiction = selectedOffice
+-                    )
+-                    onLoginSuccess()
++                    CivicDataRepository.launchOperation {
++                        CivicDataRepository.login(username, password)
++                        password = ""
++                        onLoginSuccess()
++                    }
+                 },
+                 modifier = Modifier
+@@ -269,8 +260,5 @@ fun OfficerLoginScreen(
+             ElevatedButton(
+                 onClick = {
+-                    username = "officer.kanimozhi@pwd.tn.gov.in"
+-                    password = "demoPassword"
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.OFFICER }
+-                    onLoginSuccess()
++                    username = "officer@test.com"
+                 },
+                 colors = ButtonDefaults.elevatedButtonColors(
+@@ -284,5 +272,5 @@ fun OfficerLoginScreen(
+                 Icon(Icons.Default.PlayArrow, contentDescription = null)
+                 Spacer(modifier = Modifier.width(8.dp))
+-                Text(if (isTa) "மாதிரி உள்நுழைவு (Demo Officer)" else "Demo Login as Officer", fontSize = 15.sp, fontWeight = FontWeight.Bold)
++                Text(if (isTa) "மாதிரி உள்நுழைவு (Demo Officer)" else "Use Test Email for Officer", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+             }
+         }
+@@ -340,6 +328,9 @@ fun CoordinatorLoginScreen(
+             Button(
+                 onClick = {
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.COORDINATOR }
+-                    onLoginSuccess()
++                    CivicDataRepository.launchOperation {
++                        CivicDataRepository.login(username, password)
++                        password = ""
++                        onLoginSuccess()
++                    }
+                 },
+                 modifier = Modifier.fillMaxWidth().height(50.dp)
+@@ -350,8 +341,5 @@ fun CoordinatorLoginScreen(
+             ElevatedButton(
+                 onClick = {
+-                    username = "coord.raman@tn.gov.in"
+-                    password = "demoPassword"
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.COORDINATOR }
+-                    onLoginSuccess()
++                    username = "coordinator@test.com"
+                 },
+                 colors = ButtonDefaults.elevatedButtonColors(
+@@ -363,5 +351,5 @@ fun CoordinatorLoginScreen(
+                 Icon(Icons.Default.PlayArrow, contentDescription = null)
+                 Spacer(modifier = Modifier.width(8.dp))
+-                Text("Demo Login as Coordinator", fontSize = 15.sp, fontWeight = FontWeight.Bold)
++                Text("Use Test Email for Coordinator", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+             }
+         }
+@@ -418,6 +406,9 @@ fun ContractorLoginScreen(
+             Button(
+                 onClick = {
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.CONTRACTOR }
+-                    onLoginSuccess()
++                    CivicDataRepository.launchOperation {
++                        CivicDataRepository.login(contractorId, password)
++                        password = ""
++                        onLoginSuccess()
++                    }
+                 },
+                 modifier = Modifier.fillMaxWidth().height(50.dp)
+@@ -428,8 +419,5 @@ fun ContractorLoginScreen(
+             ElevatedButton(
+                 onClick = {
+-                    contractorId = "CON-LT-9081"
+-                    password = "demoPassword"
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.CONTRACTOR }
+-                    onLoginSuccess()
++                    contractorId = "contractor@test.com"
+                 },
+                 colors = ButtonDefaults.elevatedButtonColors(
+@@ -441,5 +429,5 @@ fun ContractorLoginScreen(
+                 Icon(Icons.Default.PlayArrow, contentDescription = null)
+                 Spacer(modifier = Modifier.width(8.dp))
+-                Text("Demo Login as Contractor", fontSize = 15.sp, fontWeight = FontWeight.Bold)
++                Text("Use Test Email for Contractor", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+             }
+         }
+@@ -478,5 +466,5 @@ fun AdminLoginScreen(
+                 value = username,
+                 onValueChange = { username = it },
+-                label = { Text("Admin Username") },
++                label = { Text("Email Address") },
+                 leadingIcon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = null) },
+                 modifier = Modifier.fillMaxWidth(),
+@@ -496,6 +484,9 @@ fun AdminLoginScreen(
+             Button(
+                 onClick = {
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.ADMINISTRATOR }
+-                    onLoginSuccess()
++                    CivicDataRepository.launchOperation {
++                        CivicDataRepository.login(username, password)
++                        password = ""
++                        onLoginSuccess()
++                    }
+                 },
+                 modifier = Modifier.fillMaxWidth().height(50.dp)
+@@ -506,8 +497,5 @@ fun AdminLoginScreen(
+             ElevatedButton(
+                 onClick = {
+-                    username = "admin.civic@tn.gov.in"
+-                    password = "demoPassword"
+-                    CivicDataRepository.currentUser = CivicDataRepository.users.find { it.role == UserRole.ADMINISTRATOR }
+-                    onLoginSuccess()
++                    username = "admin@test.com"
+                 },
+                 colors = ButtonDefaults.elevatedButtonColors(
+@@ -519,5 +507,5 @@ fun AdminLoginScreen(
+                 Icon(Icons.Default.PlayArrow, contentDescription = null)
+                 Spacer(modifier = Modifier.width(8.dp))
+-                Text("Demo Login as Admin", fontSize = 15.sp, fontWeight = FontWeight.Bold)
++                Text("Use Test Email for Admin", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+             }
+         }
+@@ -544,5 +532,5 @@ private fun DemoBanner(roleName: String, isTa: Boolean) {
+             Spacer(modifier = Modifier.width(8.dp))
+             Text(
+-                text = if (isTa) "$roleName மாதிரி கணக்கு - கீழே உள்ள 'மாதிரி உள்நுழைவு' பொத்தானைப் பயன்படுத்தவும்." else "$roleName Demo Account - Tap 'Demo Login' below for instant access.",
++                text = if (isTa) "$roleName: மின்னஞ்சல் மற்றும் கடவுச்சொல்லுடன் உள்நுழைக. பங்கு சேவையகத்தில் சரிபார்க்கப்படும்." else "$roleName: use your account email and password. Your role is verified by the server.",
+                 style = MaterialTheme.typography.labelSmall,
+                 color = MaterialTheme.colorScheme.onPrimaryContainer
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\SplashScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\SplashScreen.kt"
+index ac726bf..a927a99 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\SplashScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\SplashScreen.kt"
+@@ -22,4 +22,5 @@ fun SplashScreen(onNavigateToWelcome: () -> Unit) {
+     LaunchedEffect(Unit) {
+         delay(1500)
++        com.example.civic.data.CivicDataRepository.initialize()
+         onNavigateToWelcome()
+     }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\WelcomeScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\WelcomeScreen.kt"
+index 405a5ec..8da3c4a 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\WelcomeScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\auth\\WelcomeScreen.kt"
+@@ -74,5 +74,5 @@ fun WelcomeScreen(
+                     FilterChip(
+                         selected = CivicDataRepository.currentLanguage == AppLanguage.ENGLISH,
+-                        onClick = { CivicDataRepository.currentLanguage = AppLanguage.ENGLISH },
++                        onClick = { CivicDataRepository.setLanguage(AppLanguage.ENGLISH) },
+                         label = { Text("English", fontSize = 12.sp) }
+                     )
+@@ -80,5 +80,5 @@ fun WelcomeScreen(
+                     FilterChip(
+                         selected = CivicDataRepository.currentLanguage == AppLanguage.TAMIL,
+-                        onClick = { CivicDataRepository.currentLanguage = AppLanguage.TAMIL },
++                        onClick = { CivicDataRepository.setLanguage(AppLanguage.TAMIL) },
+                         label = { Text("தமிழ்", fontSize = 12.sp) }
+                     )
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenDashboardScreen.kt"
+index 7fbb397..2c8384d 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenDashboardScreen.kt"
+@@ -120,5 +120,5 @@ fun CitizenDashboardScreen(
+                             project = project,
+                             onClick = { onNavigate(Screen.ProjectDetails.createRoute(project.id)) },
+-                            onToggleFollow = { CivicDataRepository.toggleProjectFollow(project.id) }
++                            onToggleFollow = { CivicDataRepository.launchOperation { CivicDataRepository.toggleProjectFollow(project.id) } }
+                         )
+                     }
+@@ -264,5 +264,5 @@ fun CitizenDashboardScreen(
+                         project = project,
+                         onClick = { onNavigate(Screen.ProjectDetails.createRoute(project.id)) },
+-                        onToggleFollow = { CivicDataRepository.toggleProjectFollow(project.id) }
++                        onToggleFollow = { CivicDataRepository.launchOperation { CivicDataRepository.toggleProjectFollow(project.id) } }
+                     )
+                 }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenProfileScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenProfileScreen.kt"
+index 6ebec16..9c265e9 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenProfileScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\CitizenProfileScreen.kt"
+@@ -68,15 +68,15 @@ fun CitizenProfileScreen(
+                     Column {
+                         Text(
+-                            text = "R. Anbarasan",
++                            text = CivicDataRepository.currentUser?.name ?: "Guest Citizen",
+                             style = MaterialTheme.typography.titleLarge,
+                             fontWeight = FontWeight.Bold
+                         )
+                         Text(
+-                            text = "citizen.anbarasan@gmail.com",
++                            text = CivicDataRepository.currentUser?.email.orEmpty(),
+                             style = MaterialTheme.typography.bodyMedium,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                         )
+                         Text(
+-                            text = "District: Chennai | Ward 118",
++                            text = CivicDataRepository.currentUser?.officeJurisdiction.orEmpty(),
+                             style = MaterialTheme.typography.labelSmall,
+                             color = MaterialTheme.colorScheme.primary
+@@ -110,5 +110,5 @@ fun CitizenProfileScreen(
+                             SegmentedButton(
+                                 selected = CivicDataRepository.currentLanguage == AppLanguage.ENGLISH,
+-                                onClick = { CivicDataRepository.currentLanguage = AppLanguage.ENGLISH },
++                                onClick = { CivicDataRepository.setLanguage(AppLanguage.ENGLISH) },
+                                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                 label = { Text("English") }
+@@ -116,5 +116,5 @@ fun CitizenProfileScreen(
+                             SegmentedButton(
+                                 selected = CivicDataRepository.currentLanguage == AppLanguage.TAMIL,
+-                                onClick = { CivicDataRepository.currentLanguage = AppLanguage.TAMIL },
++                                onClick = { CivicDataRepository.setLanguage(AppLanguage.TAMIL) },
+                                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                 label = { Text("தமிழ்") }
+@@ -143,5 +143,5 @@ fun CitizenProfileScreen(
+                         project = proj,
+                         onClick = { onNavigate(Screen.ProjectDetails.createRoute(proj.id)) },
+-                        onToggleFollow = { CivicDataRepository.toggleProjectFollow(proj.id) }
++                        onToggleFollow = { CivicDataRepository.launchOperation { CivicDataRepository.toggleProjectFollow(proj.id) } }
+                     )
+                 }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintDetailsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintDetailsScreen.kt"
+index 367c70a..0e230dc 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintDetailsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintDetailsScreen.kt"
+@@ -32,4 +32,5 @@ fun ComplaintDetailsScreen(
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+     val complaint = CivicDataRepository.complaints.find { it.id == complaintId }
++    var reply by remember(complaintId) { mutableStateOf("") }
+ 
+     if (complaint == null) {
+@@ -270,4 +271,5 @@ fun ComplaintDetailsScreen(
+                             }
+                         }
++                        com.example.civic.ui.components.CivicStoredImage("complaint-photos", complaint.photoUri)
+                     }
+                 }
+@@ -275,4 +277,11 @@ fun ComplaintDetailsScreen(
+ 
+             // Chronological Event History Timeline
++            if (complaint.status == ComplaintStatus.AWAITING_CITIZEN_INFO &&
++                CivicDataRepository.currentUser?.role == com.example.civic.data.models.UserRole.CITIZEN) {
++                OutlinedTextField(reply, { reply = it }, label = { Text(if (isTa) "கூடுதல் தகவல்" else "Additional information") }, modifier = Modifier.fillMaxWidth())
++                Button(onClick = { CivicDataRepository.launchOperation { CivicDataRepository.replyComplaint(complaint.id, reply); reply = "" } }, enabled = reply.isNotBlank()) {
++                    Text(if (isTa) "பதில் அனுப்பு" else "Send reply")
++                }
++            }
+             Card(
+                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintSubmissionScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintSubmissionScreen.kt"
+index 5a5bd4d..a0b5724 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintSubmissionScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ComplaintSubmissionScreen.kt"
+@@ -10,4 +10,7 @@ import androidx.compose.material.icons.filled.*
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -40,4 +43,5 @@ fun ComplaintSubmissionScreen(
+     }
+     var projectExpanded by remember { mutableStateOf(false) }
++    var municipalityExpanded by remember { mutableStateOf(false) }
+ 
+     var locationInput by remember { mutableStateOf(selectedProject?.location ?: "") }
+@@ -45,4 +49,7 @@ fun ComplaintSubmissionScreen(
+     var descriptionInput by remember { mutableStateOf("") }
+     var attachedPhotoName by remember { mutableStateOf<String?>(null) }
++    val context = LocalContext.current
++    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> attachedPhotoName = uri?.toString() }
++    var savedRecordId by remember { mutableStateOf<String?>(null) }
+ 
+     var showConfirmDialog by remember { mutableStateOf(false) }
+@@ -118,4 +125,8 @@ fun ComplaintSubmissionScreen(
+                     onDismissRequest = { projectExpanded = false }
+                 ) {
++                    DropdownMenuItem(
++                        text = { Text(if (isTa) "திட்டம் இல்லாத புகார்" else "No related project") },
++                        onClick = { selectedProject = null; districtInput = ""; projectExpanded = false }
++                    )
+                     projects.forEach { proj ->
+                         DropdownMenuItem(
+@@ -132,4 +143,21 @@ fun ComplaintSubmissionScreen(
+             }
+ 
++            if (selectedProject == null) {
++                ExposedDropdownMenuBox(expanded = municipalityExpanded,
++                    onExpandedChange = { municipalityExpanded = !municipalityExpanded }) {
++                    OutlinedTextField(value = districtInput, onValueChange = {}, readOnly = true,
++                        label = { Text(if (isTa) "நகராட்சி" else "Municipality") },
++                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(municipalityExpanded) },
++                        modifier = Modifier.menuAnchor().fillMaxWidth())
++                    ExposedDropdownMenu(expanded = municipalityExpanded, onDismissRequest = { municipalityExpanded = false }) {
++                        CivicDataRepository.jurisdictions.filter { it.active && it.kind == "MUNICIPALITY" }.forEach { municipality ->
++                            DropdownMenuItem(text = { Text(municipality.name) }, onClick = {
++                                districtInput = municipality.name; municipalityExpanded = false
++                            })
++                        }
++                    }
++                }
++            }
++
+             OutlinedTextField(
+                 value = locationInput,
+@@ -148,5 +176,5 @@ fun ComplaintSubmissionScreen(
+             )
+ 
+-            // Photo Attachment Mock
++            // Authorized file attachment
+             Card(
+                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+@@ -163,10 +191,10 @@ fun ComplaintSubmissionScreen(
+                         Column {
+                             Text(
+-                                text = attachedPhotoName ?: (if (isTa) "புகைப்படம் இணைக்கவும் (சான்று)" else "Attach Site Photo"),
++                                text = attachedPhotoName?.let { "Selected attachment" } ?: (if (isTa) "புகைப்படம் இணைக்கவும் (சான்று)" else "Attach Site Photo"),
+                                 style = MaterialTheme.typography.bodyMedium,
+                                 fontWeight = FontWeight.SemiBold
+                             )
+                             Text(
+-                                text = "JPEG, PNG up to 5MB",
++                                text = "JPEG, PNG, WebP up to 10MB",
+                                 style = MaterialTheme.typography.labelSmall,
+                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+@@ -176,5 +204,5 @@ fun ComplaintSubmissionScreen(
+ 
+                     OutlinedButton(
+-                        onClick = { attachedPhotoName = "site_photo_proof_${(100..999).random()}.jpg" }
++                        onClick = { picker.launch("image/*") }
+                     ) {
+                         Text(if (attachedPhotoName == null) "Select" else "Change")
+@@ -187,6 +215,8 @@ fun ComplaintSubmissionScreen(
+             Button(
+                 onClick = {
++                    CivicDataRepository.launchOperation {
+                     if (descriptionInput.isNotBlank() && locationInput.isNotBlank()) {
+-                        val created = CivicDataRepository.submitComplaint(
++                        CivicDataRepository.validateAttachment(context, attachedPhotoName)
++                        val createdId = savedRecordId ?: CivicDataRepository.submitComplaint(
+                             category = selectedCategory,
+                             projectId = selectedProject?.id,
+@@ -196,9 +226,13 @@ fun ComplaintSubmissionScreen(
+                             description = descriptionInput,
+                             photoUri = attachedPhotoName,
+-                            citizenName = "S. Karthik"
+-                        )
+-                        submittedComplaintId = created.id
++                            citizenName = CivicDataRepository.currentUser?.name.orEmpty()
++                        ).id
++                        savedRecordId = createdId
++                        CivicDataRepository.uploadAttachment(context, attachedPhotoName, "complaint-photos", createdId)
++                        submittedComplaintId = createdId
+                         showConfirmDialog = true
+                     }
++                
++                    }
+                 },
+                 enabled = descriptionInput.isNotBlank() && locationInput.isNotBlank(),
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectDetailsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectDetailsScreen.kt"
+index 0ef15a0..c4ace96 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectDetailsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectDetailsScreen.kt"
+@@ -27,4 +27,7 @@ fun ProjectDetailsScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
++    LaunchedEffect(projectId) {
++        CivicDataRepository.launchOperation { CivicDataRepository.findProject(projectId) }
++    }
+     val project = CivicDataRepository.projects.find { it.id == projectId }
+ 
+@@ -34,5 +37,5 @@ fun ProjectDetailsScreen(
+         ) { padding ->
+             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+-                Text("Project not found: $projectId")
++                Text(if (CivicDataRepository.loading) "Loading project…" else "Project not found or not accessible: $projectId")
+             }
+         }
+@@ -57,4 +60,6 @@ fun ProjectDetailsScreen(
+             verticalArrangement = Arrangement.spacedBy(16.dp)
+         ) {
++            if (project.isDemo) Text(if (isTa) "எடுத்துக்காட்டு திட்டம்" else "Demonstration project",
++                style = MaterialTheme.typography.labelSmall)
+             // Title Header Card
+             Card(
+@@ -71,5 +76,8 @@ fun ProjectDetailsScreen(
+ 
+                         Button(
+-                            onClick = { CivicDataRepository.toggleProjectFollow(project.id) },
++                            onClick = {
++                    CivicDataRepository.launchOperation { CivicDataRepository.toggleProjectFollow(project.id) 
++                    }
++                },
+                             colors = ButtonDefaults.buttonColors(
+                                 containerColor = if (project.isFollowed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primary,
+@@ -259,4 +267,14 @@ fun ProjectDetailsScreen(
+ 
+             // Action Buttons
++            project.progressReports.forEach { report ->
++                Card(Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Text("${report.completionPercentage}% — ${report.status}", fontWeight = FontWeight.Bold)
++                        Text(report.workCompleted)
++                        report.photoUri?.let { com.example.civic.ui.components.CivicStoredImage("progress-evidence", it) }
++                        report.officerNotes?.let { Text(it) }
++                    }
++                }
++            }
+             Button(
+                 onClick = { onNavigateToComplaint(project.id) },
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectMapScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectMapScreen.kt"
+index 25fdd6d..b577768 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectMapScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectMapScreen.kt"
+@@ -35,5 +35,6 @@ fun ProjectMapScreen(
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+     val projects = CivicDataRepository.projects
+-    var selectedProject by remember { mutableStateOf<Project?>(projects.firstOrNull()) }
++    var selectedProjectId by remember { mutableStateOf(projects.firstOrNull()?.id) }
++    val selectedProject = projects.find { it.id == selectedProjectId }
+ 
+     Scaffold(
+@@ -99,11 +100,8 @@ fun ProjectMapScreen(
+ 
+                 // Map Markers overlay
+-                val markerPositions = listOf(
+-                    Offset(0.7f, 0.25f) to projects.getOrNull(0), // Chennai
+-                    Offset(0.25f, 0.55f) to projects.getOrNull(1), // Coimbatore
+-                    Offset(0.45f, 0.75f) to projects.getOrNull(2), // Madurai
+-                    Offset(0.52f, 0.50f) to projects.getOrNull(3), // Trichy
+-                    Offset(0.38f, 0.40f) to projects.getOrNull(4)  // Salem
+-                )
++                val markerPositions = projects.map { project ->
++                    Offset(((project.longitude - 76.0) / 4.5).toFloat().coerceIn(0.05f, 0.95f),
++                        (1.0 - (project.latitude - 8.0) / 5.6).toFloat().coerceIn(0.05f, 0.95f)) to project
++                }
+ 
+                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+@@ -115,5 +113,5 @@ fun ProjectMapScreen(
+                             val isSelected = selectedProject?.id == proj.id
+                             IconButton(
+-                                onClick = { selectedProject = proj },
++                                onClick = { selectedProjectId = proj.id },
+                                 modifier = Modifier
+                                     .offset(x = w * relPos.x - 20.dp, y = h * relPos.y - 20.dp)
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectQRScannerScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectQRScannerScreen.kt"
+index 64c1a66..ca52588 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectQRScannerScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\ProjectQRScannerScreen.kt"
+@@ -15,8 +15,10 @@ import com.google.mlkit.vision.barcode.common.Barcode
+ import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
++import kotlinx.coroutines.launch
+ 
+ @Composable
+ fun ProjectQRScannerScreen(onNavigateBack: () -> Unit, onProjectScanned: (String) -> Unit) {
+     val context = LocalContext.current
++    val scope = rememberCoroutineScope()
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+     var scanning by remember { mutableStateOf(false) }
+@@ -45,12 +47,19 @@ fun ProjectQRScannerScreen(onNavigateBack: () -> Unit, onProjectScanned: (String
+                 .addOnSuccessListener { barcode ->
+                     if (active.get() && !finished) {
+-                        scanning = false
+-                        when (val result = ProjectQRUtils.lookup(barcode.rawValue, CivicDataRepository.projects)) {
+-                            is ProjectQRUtils.LookupResult.Found -> {
+-                                finished = true
+-                                onFound(result.project.id)
+-                            }
+-                            ProjectQRUtils.LookupResult.Invalid -> error = "invalid"
+-                            ProjectQRUtils.LookupResult.NotFound -> error = "missing"
++                        scope.launch {
++                            try {
++                                val raw = barcode.rawValue
++                                if (raw.isNullOrBlank() || raw.length > 150) { error = "invalid"; return@launch }
++                                val project = CivicDataRepository.findProject(raw)
++                                if (!active.get()) return@launch
++                                if (project == null) {
++                                    error = if (ProjectQRUtils.lookup(raw, emptyList()) == ProjectQRUtils.LookupResult.Invalid) "invalid" else "missing"
++                                } else {
++                                    finished = true
++                                    onFound(project.id)
++                                }
++                            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
++                            catch (_: Exception) { if (active.get()) error = "network" }
++                            finally { scanning = false }
+                         }
+                     }
+@@ -89,4 +98,5 @@ fun ProjectQRScannerScreen(onNavigateBack: () -> Unit, onProjectScanned: (String
+                     "missing" -> if (isTa) "திட்டம் கிடைக்கவில்லை" else "Project Not Found"
+                     "camera" -> if (isTa) "இந்த சாதனத்தில் கேமரா கிடைக்கவில்லை." else "No camera is available on this device."
++                    "network" -> if (isTa) "திட்டத்தை ஏற்ற முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்." else "Unable to load the project. Check your connection and retry."
+                     else -> if (isTa) "ஸ்கேனரைத் திறக்க முடியவில்லை. கேமரா அணுகல் மற்றும் Google Play சேவைகளைச் சரிபார்த்து, இணைய இணைப்புடன் மீண்டும் முயலவும்."
+                         else "Unable to open the scanner. Check camera access and Google Play services, then retry with an internet connection."
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\PublicProjectsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\PublicProjectsScreen.kt"
+index ef0feac..914f27b 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\PublicProjectsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\citizen\\PublicProjectsScreen.kt"
+@@ -180,5 +180,5 @@ fun PublicProjectsScreen(
+                             project = project,
+                             onClick = { onNavigate(Screen.ProjectDetails.createRoute(project.id)) },
+-                            onToggleFollow = { CivicDataRepository.toggleProjectFollow(project.id) }
++                            onToggleFollow = { CivicDataRepository.launchOperation { CivicDataRepository.toggleProjectFollow(project.id) } }
+                         )
+                     }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorAssignedProjectsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorAssignedProjectsScreen.kt"
+index cc5d8d7..1fc50fa 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorAssignedProjectsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorAssignedProjectsScreen.kt"
+@@ -21,5 +21,5 @@ fun ContractorAssignedProjectsScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.assignedProjects
+ 
+     Scaffold(
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorDashboardScreen.kt"
+index 9f2f314..8efbc45 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\ContractorDashboardScreen.kt"
+@@ -28,5 +28,5 @@ fun ContractorDashboardScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.assignedProjects
+ 
+     Scaffold(
+@@ -90,5 +90,5 @@ fun ContractorDashboardScreen(
+                 MetricCard(
+                     title = if (isTa) "சரிபார்ப்பு நிலுவையில்" else "Pending Officer Verification",
+-                    value = "1",
++                    value = projects.sumOf { it.progressReports.count { r -> r.status == "Pending Verification" } }.toString(),
+                     icon = Icons.Default.PendingActions,
+                     containerColor = CivicWarningContainer,
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\DeadlineRevisionScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\DeadlineRevisionScreen.kt"
+index bb71d70..a51304e 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\DeadlineRevisionScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\DeadlineRevisionScreen.kt"
+@@ -9,4 +9,7 @@ import androidx.compose.material.icons.filled.Send
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -25,5 +28,5 @@ fun DeadlineRevisionScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.assignedProjects
+ 
+     var selectedProject by remember { mutableStateOf(projects.firstOrNull()) }
+@@ -33,4 +36,7 @@ fun DeadlineRevisionScreen(
+     var reasonInput by remember { mutableStateOf("") }
+     var attachedDocName by remember { mutableStateOf<String?>(null) }
++    val context = LocalContext.current
++    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> attachedDocName = uri?.toString() }
++    var savedRecordId by remember { mutableStateOf<String?>(null) }
+ 
+     var showSuccessDialog by remember { mutableStateOf(false) }
+@@ -53,4 +59,9 @@ fun DeadlineRevisionScreen(
+             verticalArrangement = Arrangement.spacedBy(14.dp)
+         ) {
++            CivicDataRepository.deadlineRequests.forEach { request ->
++                Text("${request.projectId}: ${request.proposedDate} — ${request.status}")
++                request.notes?.let { Text(it) }
++                request.documentPath?.let { com.example.civic.ui.components.CivicStoredDocument(it) }
++            }
+             // Important Notice Rule Card
+             Card(
+@@ -125,5 +136,5 @@ fun DeadlineRevisionScreen(
+             )
+ 
+-            // Document Upload Mock
++            // Authorized file attachment
+             Card(
+                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+@@ -136,8 +147,8 @@ fun DeadlineRevisionScreen(
+                 ) {
+                     Text(
+-                        text = attachedDocName ?: "Attach Supporting Justification Document (PDF)",
++                        text = attachedDocName?.let { "Selected attachment" } ?: "Attach Supporting Justification Document (PDF)",
+                         style = MaterialTheme.typography.bodyMedium
+                     )
+-                    OutlinedButton(onClick = { attachedDocName = "delay_justification_doc.pdf" }) {
++                    OutlinedButton(onClick = { picker.launch("application/pdf") }) {
+                         Text("Attach")
+                     }
+@@ -148,5 +159,12 @@ fun DeadlineRevisionScreen(
+                 onClick = {
+                     if (reasonInput.isNotBlank()) {
+-                        showSuccessDialog = true
++                        CivicDataRepository.launchOperation {
++                            CivicDataRepository.validateAttachment(context, attachedDocName, pdf = true)
++                            val createdId = savedRecordId ?: CivicDataRepository.requestDeadline(
++                                checkNotNull(selectedProject) { "Select a project." }.id, proposedDateInput, reasonInput)
++                            savedRecordId = createdId
++                            CivicDataRepository.uploadAttachment(context, attachedDocName, "deadline-documents", createdId)
++                            showSuccessDialog = true
++                        }
+                     }
+                 },
+@@ -165,5 +183,5 @@ fun DeadlineRevisionScreen(
+             onDismissRequest = { },
+             title = { Text("Request Submitted to Officer") },
+-            text = { Text("Your deadline revision request for $proposedDateInput has been logged and sent to Er. R. Kanimozhi. The official approved project deadline remains unchanged until officer review.") },
++            text = { Text("Your deadline revision request for $proposedDateInput has been logged and sent to the authorized officer. The official approved project deadline remains unchanged until officer review.") },
+             confirmButton = {
+                 Button(onClick = {
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\SubmitProgressScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\SubmitProgressScreen.kt"
+index 050093d..bfb020f 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\SubmitProgressScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\contractor\\SubmitProgressScreen.kt"
+@@ -9,4 +9,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -25,5 +28,5 @@ fun SubmitProgressScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.assignedProjects
+ 
+     var selectedProject by remember { mutableStateOf(projects.firstOrNull()) }
+@@ -38,4 +41,7 @@ fun SubmitProgressScreen(
+     var obstaclesInput by remember { mutableStateOf("") }
+     var attachedPhotoName by remember { mutableStateOf<String?>(null) }
++    val context = LocalContext.current
++    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> attachedPhotoName = uri?.toString() }
++    var savedRecordId by remember { mutableStateOf<String?>(null) }
+ 
+     var showConfirmDialog by remember { mutableStateOf(false) }
+@@ -169,5 +175,5 @@ fun SubmitProgressScreen(
+             )
+ 
+-            // Photo upload mock
++            // Authorized file attachment
+             Card(
+                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+@@ -182,7 +188,7 @@ fun SubmitProgressScreen(
+                         Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                         Spacer(modifier = Modifier.width(10.dp))
+-                        Text(text = attachedPhotoName ?: "Attach Site Verification Photo", style = MaterialTheme.typography.bodyMedium)
++                        Text(text = attachedPhotoName?.let { "Selected attachment" } ?: "Attach Site Verification Photo", style = MaterialTheme.typography.bodyMedium)
+                     }
+-                    OutlinedButton(onClick = { attachedPhotoName = "site_progress_img_${(100..999).random()}.jpg" }) {
++                    OutlinedButton(onClick = { picker.launch("image/*") }) {
+                         Text("Attach")
+                     }
+@@ -192,8 +198,10 @@ fun SubmitProgressScreen(
+             Button(
+                 onClick = {
++                    CivicDataRepository.launchOperation {
+                     if (selectedProject != null && workCompletedInput.isNotBlank()) {
+-                        CivicDataRepository.submitProgressReport(
++                        CivicDataRepository.validateAttachment(context, attachedPhotoName)
++                        val createdId = savedRecordId ?: CivicDataRepository.submitProgressReport(
+                             projectId = selectedProject!!.id,
+-                            milestoneId = "M1",
++                            milestoneId = checkNotNull(selectedProject?.milestones?.find { it.title == selectedMilestone }) { "Select a valid milestone." }.id,
+                             submittedBy = "L&T Contractor Supervisor",
+                             completionPct = completionPercentage.toInt(),
+@@ -202,6 +210,10 @@ fun SubmitProgressScreen(
+                             obstacles = obstaclesInput.ifBlank { null }
+                         )
++                        savedRecordId = createdId
++                        CivicDataRepository.uploadAttachment(context, attachedPhotoName, "progress-evidence", createdId)
+                         showConfirmDialog = true
+                     }
++                
++                    }
+                 },
+                 enabled = selectedProject != null && workCompletedInput.isNotBlank(),
+@@ -219,5 +231,5 @@ fun SubmitProgressScreen(
+             onDismissRequest = { },
+             title = { Text("Progress Report Submitted!") },
+-            text = { Text("Your progress report has been submitted to government officer Er. R. Kanimozhi for site verification.") },
++            text = { Text("Your progress report has been submitted to the authorized government officer for site verification.") },
+             confirmButton = {
+                 Button(onClick = {
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\ConflictDetectionScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\ConflictDetectionScreen.kt"
+index be4002c..a24ad1f 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\ConflictDetectionScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\ConflictDetectionScreen.kt"
+@@ -32,6 +32,11 @@ fun ConflictDetectionScreen(
+     var selectedConflictForResolution by remember { mutableStateOf<ScheduleConflict?>(null) }
+     var resolutionInput by remember { mutableStateOf("") }
++    var recording by remember { mutableStateOf(false) }
++    if (recording) RecordConflictDialog { recording = false }
+ 
+     Scaffold(
++        floatingActionButton = {
++            ExtendedFloatingActionButton(onClick = { recording = true }) { Text(if (isTa) "முரண்பாட்டைப் பதிவு செய்" else "Record Conflict") }
++        },
+         topBar = {
+             CivicTopAppBar(
+@@ -207,4 +212,5 @@ fun ConflictDetectionScreen(
+                 Button(
+                     onClick = {
++                    CivicDataRepository.launchOperation {
+                         if (resolutionInput.isNotBlank()) {
+                             CivicDataRepository.resolveConflict(
+@@ -216,5 +222,7 @@ fun ConflictDetectionScreen(
+                             resolutionInput = ""
+                         }
+-                    },
++                    
++                    }
++                },
+                     enabled = resolutionInput.isNotBlank()
+                 ) {
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorDashboardScreen.kt"
+index b66ac1b..b24b0da 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorDashboardScreen.kt"
+@@ -142,5 +142,5 @@ fun CoordinatorDashboardScreen(
+                 MetricCard(
+                     title = if (isTa) "பகிரப்பட்ட திட்டங்கள்" else "Shared Schedule",
+-                    value = CivicDataRepository.projects.size.toString(),
++                    value = CivicDataRepository.managedProjects.size.toString(),
+                     icon = Icons.Default.DateRange,
+                     containerColor = CivicMutedBlueLight,
+@@ -151,5 +151,5 @@ fun CoordinatorDashboardScreen(
+                 MetricCard(
+                     title = if (isTa) "துறை அறிக்கைகள்" else "Reports & Analytics",
+-                    value = "5 Depts",
++                    value = CivicDataRepository.managedProjects.map { it.department }.distinct().size.toString(),
+                     icon = Icons.Default.Assessment,
+                     containerColor = CivicSurfaceVariant,
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorReportsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorReportsScreen.kt"
+index 374184f..356d28f 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorReportsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\CoordinatorReportsScreen.kt"
+@@ -41,8 +41,8 @@ fun CoordinatorReportsScreen(
+             )
+ 
+-            ReportStatCard(title = "Public Works Dept (PWD)", total = 2, ongoing = 1, delayed = 0)
+-            ReportStatCard(title = "TWAD Board (Water Supply)", total = 1, ongoing = 0, delayed = 1)
+-            ReportStatCard(title = "Highways Department", total = 1, ongoing = 0, delayed = 0)
+-            ReportStatCard(title = "Municipal Administration", total = 2, ongoing = 1, delayed = 0)
++            CivicDataRepository.managedProjects.groupBy { it.department }.forEach { (department, projects) ->
++                ReportStatCard(title = department, total = projects.size,
++                    ongoing = projects.count { it.status.name == "ONGOING" }, delayed = projects.count { it.status.name == "DELAYED" })
++            }
+         }
+     }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\DepartmentProjectsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\DepartmentProjectsScreen.kt"
+index 9526f8a..187fe7c 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\DepartmentProjectsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\DepartmentProjectsScreen.kt"
+@@ -27,5 +27,5 @@ fun DepartmentProjectsScreen(
+ 
+     val depts = listOf("All Depts", "Public Works Department", "TWAD Board", "Highways Department", "Municipal Administration")
+-    val projects = CivicDataRepository.projects.filter { p ->
++    val projects = CivicDataRepository.managedProjects.filter { p ->
+         val matchesDept = if (selectedDept == "All Depts") true else p.department.contains(selectedDept, ignoreCase = true)
+         val matchesSearch = searchQuery.isBlank() || p.title.contains(searchQuery, ignoreCase = true) || p.district.contains(searchQuery, ignoreCase = true)
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\SharedScheduleScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\SharedScheduleScreen.kt"
+index 9c13e99..051b8ea 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\SharedScheduleScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\coordinator\\SharedScheduleScreen.kt"
+@@ -26,5 +26,5 @@ fun SharedScheduleScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.managedProjects
+ 
+     Scaffold(
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\IncomingOfficerScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\IncomingOfficerScreen.kt"
+index d3e2e99..5603d4b 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\IncomingOfficerScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\IncomingOfficerScreen.kt"
+@@ -27,8 +27,16 @@ fun IncomingOfficerScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val handover = CivicDataRepository.handovers.firstOrNull() ?: return
++    val handover = CivicDataRepository.incomingHandovers.firstOrNull()
++    if (handover == null) {
++        Scaffold(topBar = { CivicTopAppBar(title = if (isTa) "பணி ஒப்படைப்பு" else "Incoming Handover",
++            canNavigateBack = true, onNavigateBack = onNavigateBack) }) { padding ->
++            Text(if (isTa) "உங்களுக்கான ஒப்படைப்பு இல்லை." else "No handover assigned to you.", Modifier.padding(padding).padding(16.dp))
++        }
++        return
++    }
+ 
+     var showAckDialog by remember { mutableStateOf(false) }
+     var showClarifyDialog by remember { mutableStateOf(false) }
++    var clarification by remember { mutableStateOf("") }
+ 
+     Scaffold(
+@@ -152,6 +160,9 @@ fun IncomingOfficerScreen(
+             Button(
+                 onClick = {
++                    CivicDataRepository.launchOperation {
+                     CivicDataRepository.acknowledgeHandover(handover.id, handover.incomingOfficerName)
+                     showAckDialog = true
++                
++                    }
+                 },
+                 modifier = Modifier.fillMaxWidth().height(50.dp)
+@@ -208,8 +219,11 @@ fun IncomingOfficerScreen(
+             onDismissRequest = { showClarifyDialog = false },
+             title = { Text("Request Clarification") },
+-            text = { Text("Clarification request sent to outgoing officer ${handover.outgoingOfficerName}.") },
++            text = { OutlinedTextField(value = clarification, onValueChange = { clarification = it }, label = { Text("Clarification required") }) },
+             confirmButton = {
+-                Button(onClick = { showClarifyDialog = false }) {
+-                    Text("OK")
++                Button(onClick = { CivicDataRepository.launchOperation {
++                    CivicDataRepository.answerHandover(handover.id, false, clarification)
++                    showClarifyDialog = false
++                } }, enabled = clarification.isNotBlank()) {
++                    Text("Send Request")
+                 }
+             }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\InitiateHandoverScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\InitiateHandoverScreen.kt"
+index 116929e..b4b64ab 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\InitiateHandoverScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\handover\\InitiateHandoverScreen.kt"
+@@ -26,15 +26,15 @@ fun InitiateHandoverScreen(
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+ 
+-    var outgoingName by remember { mutableStateOf("Er. S. Sundaram") }
+-    var outgoingEmail by remember { mutableStateOf("officer.sundaram@pwd.tn.gov.in") }
++    var outgoingName by remember { mutableStateOf(CivicDataRepository.currentUser?.name.orEmpty()) }
++    var outgoingEmail by remember { mutableStateOf(CivicDataRepository.currentUser?.email.orEmpty()) }
+ 
+-    var incomingName by remember { mutableStateOf("Er. R. Kanimozhi") }
+-    var incomingEmail by remember { mutableStateOf("officer.kanimozhi@pwd.tn.gov.in") }
++    var incomingName by remember { mutableStateOf("") }
++    var incomingEmail by remember { mutableStateOf("") }
+ 
+-    var department by remember { mutableStateOf("Public Works Department") }
+-    var jurisdiction by remember { mutableStateOf("Highways & PWD Chennai Metro Division") }
+-    var transferDate by remember { mutableStateOf("01 Apr 2025") }
++    var department by remember { mutableStateOf(CivicDataRepository.currentUser?.department.orEmpty()) }
++    var jurisdiction by remember { mutableStateOf(CivicDataRepository.currentUser?.officeJurisdiction.orEmpty()) }
++    var transferDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
+     var reason by remember { mutableStateOf("Routine Departmental Transfer") }
+-    var notes by remember { mutableStateOf("Project TN-PWD-2025-01 is 68% complete. Box culverts laid on Anna Salai.") }
++    var notes by remember { mutableStateOf("") }
+ 
+     var showPreviewDialog by remember { mutableStateOf(false) }
+@@ -84,4 +84,6 @@ fun InitiateHandoverScreen(
+                 modifier = Modifier.fillMaxWidth()
+             )
++            OutlinedTextField(value = incomingEmail, onValueChange = { incomingEmail = it },
++                label = { Text("Incoming Officer User UUID") }, modifier = Modifier.fillMaxWidth())
+ 
+             OutlinedTextField(
+@@ -119,5 +121,8 @@ fun InitiateHandoverScreen(
+             OutlinedButton(
+                 onClick = {
+-                    notes = "Auto-generated Handover Summary: 2 Active Projects attached to $jurisdiction. Pending Verifications: PR-101. Unresolved Complaints: CMP-2026-102."
++                    val assigned = CivicDataRepository.assignedProjects.filter { it.responsibleOffice == jurisdiction }
++                    notes = "Projects: ${assigned.joinToString { it.id }}. Pending Verifications: " +
++                        assigned.flatMap { it.progressReports }.filter { it.status == "Pending Verification" }.joinToString { it.id } +
++                        ". Unresolved Complaints: " + CivicDataRepository.complaints.filter { it.status.name !in listOf("RESOLVED", "REJECTED") }.joinToString { it.id }
+                 },
+                 modifier = Modifier.fillMaxWidth()
+@@ -128,4 +133,6 @@ fun InitiateHandoverScreen(
+             }
+ 
++            Text(if (isTa) "நிலுவைப் புகார்கள் மற்றும் சரிபார்ப்பு அறிக்கைகள் ஒப்படைப்புப் பணிகளாகச் சேமிக்கப்படும்." else "Pending complaints and progress verifications for these assigned projects will be saved as handover tasks.",
++                style = MaterialTheme.typography.bodySmall)
+             Row(
+                 modifier = Modifier.fillMaxWidth(),
+@@ -143,4 +150,5 @@ fun InitiateHandoverScreen(
+                 Button(
+                     onClick = {
++                    CivicDataRepository.launchOperation {
+                         if (outgoingName.isNotBlank() && incomingName.isNotBlank()) {
+                             CivicDataRepository.initiateHandover(
+@@ -157,5 +165,7 @@ fun InitiateHandoverScreen(
+                             showSuccessDialog = true
+                         }
+-                    },
++                    
++                    }
++                },
+                     enabled = outgoingName.isNotBlank() && incomingName.isNotBlank(),
+                     modifier = Modifier.weight(1f).height(50.dp)
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerDashboardScreen.kt"
+index 499725a..8cd0619 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerDashboardScreen.kt"
+@@ -35,8 +35,5 @@ fun OfficerDashboardScreen(
+     val officeJurisdiction = currentUser?.officeJurisdiction ?: "Highways & PWD Chennai Metro Division"
+ 
+-    val assignedProjects = projects.filter {
+-        it.responsibleOffice.contains(officeJurisdiction, ignoreCase = true) ||
+-        it.currentOfficerInCharge.contains(officerName, ignoreCase = true)
+-    }
++    val assignedProjects = CivicDataRepository.assignedProjects
+ 
+     val ongoingCount = assignedProjects.count { it.status == ProjectStatus.ONGOING }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerMyProjectsScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerMyProjectsScreen.kt"
+index 4329ca3..e7f4fbf 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerMyProjectsScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficerMyProjectsScreen.kt"
+@@ -32,5 +32,5 @@ fun OfficerMyProjectsScreen(
+     var selectedProjectForDelay by remember { mutableStateOf<Project?>(null) }
+ 
+-    val projects = CivicDataRepository.projects.filter {
++    val projects = CivicDataRepository.managedProjects.filter {
+         searchQuery.isBlank() || (
+             it.title.contains(searchQuery, ignoreCase = true) ||
+@@ -106,4 +106,9 @@ fun OfficerMyProjectsScreen(
+                                 }
+                             }
++                            TextButton(onClick = { CivicDataRepository.launchOperation {
++                                CivicDataRepository.publishProject(project.id, !CivicDataRepository.isPublished(project.id))
++                            } }) {
++                                Text(if (CivicDataRepository.isPublished(project.id)) "Unpublish" else "Publish to Citizens")
++                            }
+                         }
+                     }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficialComplaintReviewDialog.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficialComplaintReviewDialog.kt"
+index 0d644c1..288bea4 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficialComplaintReviewDialog.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\OfficialComplaintReviewDialog.kt"
+@@ -107,4 +107,5 @@ fun OfficialComplaintReviewDialog(
+             Button(
+                 onClick = {
++                    CivicDataRepository.launchOperation {
+                     if (responseText.isNotBlank()) {
+                         val currentUser = CivicDataRepository.currentUser
+@@ -127,4 +128,6 @@ fun OfficialComplaintReviewDialog(
+                         onResponseSubmitted()
+                     }
++                
++                    }
+                 },
+                 enabled = responseText.isNotBlank()
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProgressVerificationScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProgressVerificationScreen.kt"
+index 9081287..7851b64 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProgressVerificationScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProgressVerificationScreen.kt"
+@@ -28,5 +28,5 @@ fun ProgressVerificationScreen(
+ ) {
+     val isTa = CivicDataRepository.currentLanguage == AppLanguage.TAMIL
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.managedProjects
+ 
+     // Collect all pending progress reports
+@@ -52,4 +52,21 @@ fun ProgressVerificationScreen(
+                 .padding(16.dp)
+         ) {
++            CivicDataRepository.deadlineRequests.filter { it.status == "PENDING" }.forEach { request ->
++                Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
++                    Column(Modifier.padding(12.dp)) {
++                        Text("Deadline request: ${request.projectId} → ${request.proposedDate}")
++                        Text(request.reason)
++                        request.documentPath?.let { com.example.civic.ui.components.CivicStoredDocument(it) }
++                        Row {
++                            TextButton(onClick = { CivicDataRepository.launchOperation {
++                                CivicDataRepository.reviewDeadline(request.id, true, "Approved by officer")
++                            } }) { Text("Approve deadline") }
++                            TextButton(onClick = { CivicDataRepository.launchOperation {
++                                CivicDataRepository.reviewDeadline(request.id, false, "Rejected by officer")
++                            } }) { Text("Reject deadline") }
++                        }
++                    }
++                }
++            }
+             Text(
+                 text = if (isTa) "ஒப்பந்ததாரர் சமர்ப்பித்த முன்னேற்ற அறிக்கைகள்:" else "Submitted Contractor Reports Awaiting Officer Verification:",
+@@ -123,4 +140,7 @@ fun ProgressVerificationScreen(
+                                 Text(text = "Work Completed: ${report.workCompleted}", style = MaterialTheme.typography.bodyMedium)
+                                 Text(text = "Remaining Work: ${report.remainingWork}", style = MaterialTheme.typography.bodyMedium)
++                                report.photoUri?.let { path ->
++                                    com.example.civic.ui.components.CivicStoredImage("progress-evidence", path)
++                                }
+ 
+                                 if (!report.obstacles.isNull_or_blank()) {
+@@ -174,5 +194,5 @@ fun ProgressVerificationScreen(
+             text = {
+                 Column {
+-                    Text("Add verification notes or instructions for contractor:")
++                    Text(if (isTa) "அதிகாரியின் உள் சரிபார்ப்பு குறிப்புகள்:" else "Add internal officer verification notes. Contractors can see the decision; these notes remain private.")
+                     Spacer(modifier = Modifier.height(8.dp))
+                     OutlinedTextField(
+@@ -187,4 +207,5 @@ fun ProgressVerificationScreen(
+                 Button(
+                     onClick = {
++                    CivicDataRepository.launchOperation {
+                         CivicDataRepository.verifyProgressReport(
+                             projectId = projId,
+@@ -196,5 +217,7 @@ fun ProgressVerificationScreen(
+                         selectedActionReport = null
+                         officerNotesInput = ""
++                    
+                     }
++                }
+                 ) {
+                     Text("Confirm Action")
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProjectQRGeneratorScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProjectQRGeneratorScreen.kt"
+index 72f28f1..f9876a7 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProjectQRGeneratorScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\ProjectQRGeneratorScreen.kt"
+@@ -29,5 +29,5 @@ fun ProjectQRGeneratorScreen(onNavigateBack: () -> Unit) {
+     val user = CivicDataRepository.currentUser
+     val authorized = user?.role == UserRole.OFFICER && user.isActive
+-    val projects = ProjectQRUtils.managedProjects(user, CivicDataRepository.projects)
++    val projects = ProjectQRUtils.managedProjects(user, CivicDataRepository.managedProjects)
+     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+     var printError by remember { mutableStateOf(false) }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RecordDelayDialog.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RecordDelayDialog.kt"
+index 5b0ca42..7c91492 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RecordDelayDialog.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RecordDelayDialog.kt"
+@@ -66,4 +66,5 @@ fun RecordDelayDialog(
+             Button(
+                 onClick = {
++                    CivicDataRepository.launchOperation {
+                     if (reasonInput.isNotBlank() && explanationInput.isNotBlank()) {
+                         CivicDataRepository.recordDelay(
+@@ -76,4 +77,6 @@ fun RecordDelayDialog(
+                         onDelayRecorded()
+                     }
++                
++                    }
+                 },
+                 enabled = reasonInput.isNotBlank() && explanationInput.isNotBlank()
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RegisterProjectScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RegisterProjectScreen.kt"
+index d6a21ce..854a567 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RegisterProjectScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\officer\\RegisterProjectScreen.kt"
+@@ -27,5 +27,5 @@ fun RegisterProjectScreen(
+     var title by remember { mutableStateOf("") }
+     var description by remember { mutableStateOf("") }
+-    var selectedDept by remember { mutableStateOf("Public Works Department") }
++    var selectedDept by remember { mutableStateOf(CivicDataRepository.currentUser?.department.orEmpty()) }
+     var deptExpanded by remember { mutableStateOf(false) }
+ 
+@@ -33,14 +33,17 @@ fun RegisterProjectScreen(
+     var municipalBody by remember { mutableStateOf("Greater Chennai Corporation") }
+     var location by remember { mutableStateOf("") }
+-    var contractorName by remember { mutableStateOf("L&T Infrastructure Ltd") }
++    var latitude by remember { mutableStateOf("") }
++    var longitude by remember { mutableStateOf("") }
++    var responsibleOffice by remember { mutableStateOf(CivicDataRepository.currentUser?.officeJurisdiction.orEmpty()) }
++    var contractorName by remember { mutableStateOf(CivicDataRepository.contractors.firstOrNull { it.active }?.name.orEmpty()) }
+     var budgetLakhs by remember { mutableStateOf("350") }
+     var fundingSource by remember { mutableStateOf("TN Urban Infrastructure Grant") }
+-    var startDate by remember { mutableStateOf("01 Apr 2025") }
+-    var completionDate by remember { mutableStateOf("01 Nov 2025") }
++    var startDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
++    var completionDate by remember { mutableStateOf(java.time.LocalDate.now().plusMonths(6).toString()) }
+ 
+     var showPreviewDialog by remember { mutableStateOf(false) }
+     var showSuccessDialog by remember { mutableStateOf(false) }
+ 
+-    val departments = listOf("Public Works Department", "TWAD Board", "Highways Department", "Municipal Administration")
++    val departments = CivicDataRepository.departments.filter { it.active }.map { it.name }
+ 
+     Scaffold(
+@@ -133,4 +136,12 @@ fun RegisterProjectScreen(
+             )
+ 
++            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                OutlinedTextField(value = latitude, onValueChange = { latitude = it },
++                    label = { Text("Latitude") }, modifier = Modifier.weight(1f))
++                OutlinedTextField(value = longitude, onValueChange = { longitude = it },
++                    label = { Text("Longitude") }, modifier = Modifier.weight(1f))
++            }
++            OutlinedTextField(value = responsibleOffice, onValueChange = { responsibleOffice = it },
++                label = { Text("Registered Responsible Office") }, modifier = Modifier.fillMaxWidth())
+             OutlinedTextField(
+                 value = contractorName,
+@@ -185,4 +196,5 @@ fun RegisterProjectScreen(
+                 Button(
+                     onClick = {
++                    CivicDataRepository.launchOperation {
+                         if (title.isNotBlank() && location.isNotBlank()) {
+                             CivicDataRepository.registerProject(
+@@ -194,14 +206,18 @@ fun RegisterProjectScreen(
+                                 location = location,
+                                 contractorName = contractorName,
+-                                responsibleOffice = CivicDataRepository.currentUser?.officeJurisdiction ?: "Highways Chennai Division",
++                                responsibleOffice = responsibleOffice,
+                                 officerInCharge = CivicDataRepository.currentUser?.name ?: "Er. Officer",
+                                 budgetLakhs = budgetLakhs.toDoubleOrNull() ?: 100.0,
+                                 fundingSource = fundingSource,
+                                 startDate = startDate,
+-                                completionDate = completionDate
++                                completionDate = completionDate,
++                                latitude = requireNotNull(latitude.toDoubleOrNull()) { "Enter a valid latitude." },
++                                longitude = requireNotNull(longitude.toDoubleOrNull()) { "Enter a valid longitude." }
+                             )
+                             showSuccessDialog = true
+                         }
+-                    },
++                    
++                    }
++                },
+                     enabled = title.isNotBlank() && location.isNotBlank(),
+                     modifier = Modifier.weight(1f).height(48.dp)
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\ActionInboxScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\ActionInboxScreen.kt"
+index c2da07c..4365da2 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\ActionInboxScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\ActionInboxScreen.kt"
+@@ -76,5 +76,5 @@ fun ActionInboxScreen(
+ 
+     // Synthesize Action Items from Repository
+-    val allInboxItems = remember(CivicDataRepository.projects.size, CivicDataRepository.complaints.size, CivicDataRepository.conflicts.size, CivicDataRepository.handovers.size) {
++    val allInboxItems = remember(CivicDataRepository.projects.toList(), CivicDataRepository.complaints.toList(), CivicDataRepository.conflicts.toList(), CivicDataRepository.handovers.toList()) {
+         val list = mutableListOf<ActionInboxItem>()
+ 
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\OfficialDashboardScreen.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\OfficialDashboardScreen.kt"
+index 4b7ee52..30167f8 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\OfficialDashboardScreen.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\main\\java\\com\\example\\civic\\ui\\screens\\official\\OfficialDashboardScreen.kt"
+@@ -38,5 +38,5 @@ fun OfficialDashboardScreen(
+     val currentRole = currentUser?.role ?: UserRole.OFFICER
+ 
+-    val projects = CivicDataRepository.projects
++    val projects = CivicDataRepository.managedProjects
+     val complaints = CivicDataRepository.complaints
+     val conflicts = CivicDataRepository.conflicts
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\test\\java\\com\\example\\civic\\CivicRepositoryTest.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\test\\java\\com\\example\\civic\\CivicRepositoryTest.kt"
+index cf60d16..b475d33 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\test\\java\\com\\example\\civic\\CivicRepositoryTest.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\test\\java\\com\\example\\civic\\CivicRepositoryTest.kt"
+@@ -1,143 +1,77 @@
+ package com.example.civic
+ 
+-import com.example.civic.data.CivicDataRepository
++import com.example.civic.data.backend.*
+ import com.example.civic.data.models.*
++import kotlinx.serialization.json.*
+ import org.junit.Assert.*
+ import org.junit.Test
+ 
++/** Database-owned workflows are covered by supabase/tests/check_backend.mjs.
++ * These checks validate the Android adapter against actual public response shapes. */
+ class CivicRepositoryTest {
+-
+-    @Test
+-    fun test7DayDeadlineCalculatedOnSubmission() {
+-        val complaint = CivicDataRepository.submitComplaint(
+-            category = ComplaintCategory.POTHOLE,
+-            projectId = "TN-PWD-2025-01",
+-            projectTitle = "Anna Salai Drain",
+-            location = "Anna Salai, Chennai",
+-            district = "Chennai",
+-            description = "Test pothole issue",
+-            photoUri = null,
+-            citizenName = "Test Citizen"
+-        )
+-
+-        val expectedDeadline = complaint.submissionTimestampMillis + (7 * 24 * 60 * 60 * 1000L)
+-        assertEquals("Deadline must be exactly 7 calendar days after submission", expectedDeadline, complaint.deadlineTimestampMillis)
+-        assertEquals(ComplaintStatus.PENDING, complaint.status)
+-        assertEquals(ComplaintPriority.NORMAL, complaint.priority)
++    private val fixture: CivicSnapshot get() {
++        val json = checkNotNull(javaClass.getResource("/civic-public-fixture.json")).readText()
++        return CivicSnapshot(Json.parseToJsonElement(json).jsonObject.mapValues { (_, value) -> value.jsonArray.map { it.jsonObject } })
+     }
+-
+-    @Test
+-    fun testComplaintWithTimeRemainingNotEscalated() {
+-        val now = System.currentTimeMillis()
+-        CivicDataRepository.evaluateComplaintDeadlines(now)
+-
+-        val pendingComplaint = CivicDataRepository.complaints.find { it.id == "CMP-2026-101" }
+-        assertNotNull(pendingComplaint)
+-        assertNotEquals(ComplaintStatus.ESCALATED_OVERDUE, pendingComplaint?.status)
++    private fun row(vararg entries: Pair<String, Any?>) = arguments(*entries)
++    @Test fun permanentProjectIdsAndNumericFieldsSurviveDecoding() {
++        val projects = fixture.rows("projects").map(fixture::project)
++        assertEquals(setOf("TN-PWD-2025-01", "TN-TWAD-2025-02"), projects.map { it.id }.toSet())
++        assertEquals(68, projects.first { it.id == "TN-PWD-2025-01" }.progressPercentage)
++        assertTrue(projects.all { it.latitude != 0.0 && it.longitude != 0.0 && it.estimatedBudgetInLakhs > 0.0 })
+     }
+-
+-    @Test
+-    fun testExactAtDeadlineNotMarkedOverdueBeforePassed() {
+-        val now = System.currentTimeMillis()
+-        val newComplaint = CivicDataRepository.submitComplaint(
+-            category = ComplaintCategory.WATER_LEAK,
+-            projectId = null,
+-            projectTitle = null,
+-            location = "Test Location",
+-            district = "Chennai",
+-            description = "Test Description",
+-            photoUri = null,
+-            citizenName = "Tester"
+-        )
+-
+-        // Evaluate at 1 second before deadline
+-        val timeBeforeDeadline = newComplaint.deadlineTimestampMillis - 1000L
+-        CivicDataRepository.evaluateComplaintDeadlines(timeBeforeDeadline)
+-
+-        val rechecked = CivicDataRepository.complaints.find { it.id == newComplaint.id }!!
+-        assertNotEquals("Should not be marked overdue before deadline has strictly passed", ComplaintStatus.ESCALATED_OVERDUE, rechecked.status)
++    @Test fun milestonesAreJoinedByProjectAndMilestoneId() {
++        val p = fixture.rows("projects").first()
++        val snapshot = CivicSnapshot(fixture.tables + ("project_milestones" to listOf(
++            row("project_id" to p.text("id"), "milestone_id" to "M1", "title" to "Correct", "target_date" to "2026-11-01"),
++            row("project_id" to "ANOTHER-ID", "milestone_id" to "M1", "title" to "Other", "target_date" to "2026-11-01"))))
++        assertEquals(listOf("Correct"), snapshot.project(p).milestones.map { it.title })
+     }
+-
+-    @Test
+-    fun testUnansweredComplaintBecomesOverdueAfterDeadline() {
+-        val newComplaint = CivicDataRepository.submitComplaint(
+-            category = ComplaintCategory.DRAINAGE_OVERFLOW,
+-            projectId = null,
+-            projectTitle = null,
+-            location = "Test Location Overdue",
+-            district = "Madurai",
+-            description = "Test Overdue Description",
+-            photoUri = null,
+-            citizenName = "Tester Overdue"
+-        )
+-
+-        val timeAfterDeadline = newComplaint.deadlineTimestampMillis + 1000L
+-        CivicDataRepository.evaluateComplaintDeadlines(timeAfterDeadline)
+-
+-        val escalated = CivicDataRepository.complaints.find { it.id == newComplaint.id }!!
+-        assertEquals(ComplaintStatus.ESCALATED_OVERDUE, escalated.status)
+-        assertEquals(ComplaintPriority.HIGH, escalated.priority)
++    @Test fun followingComesFromCurrentUsersJoinRecords() {
++        val p = fixture.rows("projects").first()
++        assertFalse(fixture.project(p).isFollowed)
++        val following = CivicSnapshot(fixture.tables + ("project_follows" to listOf(row("project_id" to p.text("id")))))
++        assertTrue(following.project(p).isFollowed)
+     }
+-
+-    @Test
+-    fun testNoDuplicateEscalationEventsOnRepeatedEvaluations() {
+-        val complaint = CivicDataRepository.complaints.find { it.id == "CMP-2026-103" }!!
+-
+-        // Evaluate multiple times
+-        CivicDataRepository.evaluateComplaintDeadlines(System.currentTimeMillis() + (10 * 24 * 60 * 60 * 1000L))
+-        CivicDataRepository.evaluateComplaintDeadlines(System.currentTimeMillis() + (12 * 24 * 60 * 60 * 1000L))
+-
+-        val rechecked = CivicDataRepository.complaints.find { it.id == "CMP-2026-103" }!!
+-        val escalationEvents = rechecked.eventHistory.count { it.eventType == "Escalated — Overdue" }
+-        assertEquals("Escalated event must appear exactly once without duplicates", 1, escalationEvents)
++    @Test fun serverProfileDeterminesAllFiveRoles() {
++        UserRole.entries.forEach { role ->
++            val user = fixture.user(row("id" to "actual-auth-uuid", "name" to "Account", "email" to "test@example.com",
++                "role" to role.name, "is_active" to true, "is_demo" to false))
++            assertEquals(role, user.role); assertEquals("actual-auth-uuid", user.id); assertTrue(user.isActive)
++        }
+     }
+-
+-    @Test
+-    fun testComplaintAnsweredBeforeDeadlineNotEscalated() {
+-        val complaint = CivicDataRepository.complaints.find { it.id == "CMP-2026-104" }!!
+-        assertEquals(ComplaintStatus.RESOLVED, complaint.status)
+-
+-        CivicDataRepository.evaluateComplaintDeadlines(System.currentTimeMillis() + (30 * 24 * 60 * 60 * 1000L))
+-
+-        val rechecked = CivicDataRepository.complaints.find { it.id == "CMP-2026-104" }!!
+-        assertEquals("Answered complaint must remain Resolved and not be escalated", ComplaintStatus.RESOLVED, rechecked.status)
++    @Test fun timestampsPreserveExact168HourDeadlineAndOffset() {
++        val start = CivicDates.millis("2026-10-01T10:00:00+05:30")
++        val end = CivicDates.millis("2026-10-08T10:00:00+05:30")
++        assertEquals(168 * 60 * 60 * 1000L, end - start)
++        assertEquals(CivicDates.millis("2026-10-01T04:30:00Z"), start)
+     }
+-
+-    @Test
+-    fun testLateResponseDoesNotEraseOverdueHistory() {
+-        val complaint = CivicDataRepository.complaints.find { it.id == "CMP-2026-105" }!!
+-        assertEquals(ComplaintStatus.RESOLVED, complaint.status)
+-
+-        val hasEscalationHistory = complaint.eventHistory.any { it.eventType == "Escalated — Overdue" }
+-        assertTrue("Late response must preserve the historical Escalated — Overdue event in audit trail", hasEscalationHistory)
++    @Test fun dateInputsAcceptExistingDisplayFormatAndIso() {
++        assertEquals("2026-11-15", CivicDates.input("15 Nov 2026"))
++        assertEquals("2026-11-15", CivicDates.input("2026-11-15"))
++        assertEquals("15 Nov 2026", CivicDates.display("2026-11-15"))
+     }
+-
+-    @Test
+-    fun testUnassignedComplaintFlaggedForAssignment() {
+-        val unassigned = CivicDataRepository.complaints.find { it.id == "CMP-2026-106" }!!
+-        assertNull(unassigned.assignedOfficerName)
+-        assertEquals(ComplaintStatus.ESCALATED_OVERDUE, unassigned.status)
+-        assertEquals("Unassigned — Escalation Required", unassigned.lastUpdatedDate)
++    @Test fun invalidDateIsRejectedBeforeSendingRpc() {
++        assertThrows(java.time.format.DateTimeParseException::class.java) { CivicDates.input("tomorrow") }
+     }
+-
+-    @Test
+-    fun testOfficerHandoverContinuity() {
+-        val handover = CivicDataRepository.initiateHandover(
+-            outgoingName = "Er. S. Sundaram",
+-            outgoingEmail = "officer.sundaram@pwd.tn.gov.in",
+-            incomingName = "Er. R. Kanimozhi",
+-            incomingEmail = "officer.kanimozhi@pwd.tn.gov.in",
+-            department = "Public Works Department",
+-            jurisdiction = "Highways & PWD Chennai Metro Division",
+-            transferDate = "15 Mar 2025",
+-            reason = "Routine Transfer",
+-            notes = "Test handover notes"
+-        )
+-
+-        CivicDataRepository.acknowledgeHandover(handover.id, "Er. R. Kanimozhi")
+-        val project = CivicDataRepository.projects.find { it.id == "TN-PWD-2025-01" }
+-        assertNotNull(project)
+-        assertEquals("TN-PWD-2025-01", project?.id)
+-        assertTrue(project?.currentOfficerInCharge?.contains("Er. R. Kanimozhi") == true)
++    @Test fun absentInternalReviewNeverBecomesInventedOfficerFeedback() {
++        val report = row("id" to "PR-1", "project_id" to "TN-PWD-2025-01", "milestone_id" to "M1",
++            "status" to "Approved", "completion_percentage" to 65, "work_completed" to "Work", "remaining_work" to "More")
++        assertNull(fixture.report(report).officerNotes)
++        val official = CivicSnapshot(fixture.tables + ("progress_report_reviews" to listOf(row("report_id" to "PR-1", "officer_notes" to "Internal"))))
++        assertEquals("Internal", official.report(report).officerNotes)
++    }
++    @Test fun handoverCountsComeFromActualJoinedRecords() {
++        val handoverRow = row("id" to "HO-1", "status" to "INITIATED", "legacy_assigned_projects_count" to 99, "legacy_pending_tasks_count" to 88)
++        val snapshot = CivicSnapshot(mapOf("handover_projects" to listOf(row("handover_id" to "HO-1", "project_id" to "P1"))))
++        assertEquals(1, snapshot.handover(handoverRow).assignedProjectsCount)
++        assertEquals(0, snapshot.handover(handoverRow).pendingTasksCount)
++    }
++    @Test fun rpcArgumentsKeepNullsBooleansNumbersAndArraysTyped() {
++        val args = arguments("p_notes" to null, "p_approve" to true, "p_percentage" to 65, "p_projects" to listOf("P1", "P2"))
++        assertEquals(JsonNull, args["p_notes"])
++        assertTrue(args.getValue("p_approve").jsonPrimitive.boolean)
++        assertEquals(65, args.getValue("p_percentage").jsonPrimitive.int)
++        assertEquals(2, args.getValue("p_projects").jsonArray.size)
+     }
+ }
+diff --git "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\test\\java\\com\\example\\civic\\ProjectQRTest.kt" "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\test\\java\\com\\example\\civic\\ProjectQRTest.kt"
+index d3f541c..e277845 100644
+--- "a/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\supabase\\.runtime\\android-before\\app\\src\\test\\java\\com\\example\\civic\\ProjectQRTest.kt"
++++ "b/C:\\Users\\snaka\\Desktop\\Civic.1\\Civic\\app\\src\\test\\java\\com\\example\\civic\\ProjectQRTest.kt"
+@@ -13,5 +13,12 @@ import org.junit.Test
+ 
+ class ProjectQRTest {
+-    private val project get() = CivicDataRepository.projects.first()
++    private val project get() = com.example.civic.data.models.Project(
++    id = "TN-PWD-2025-01", title = "Test Project", description = "QR test fixture",
++    department = "PWD", district = "Chennai", municipalBody = "Chennai", location = "Test location",
++    latitude = 13.04, longitude = 80.23, contractorName = "Test Contractor", contractorId = "CON-TEST",
++    responsibleOffice = "Test Office", currentOfficerInCharge = "Test Officer", estimatedBudgetInLakhs = 10.0,
++    fundingSource = "Test Fund", startDate = "01 Jan 2025", originalCompletionDate = "01 Dec 2025",
++    revisedCompletionDate = "01 Dec 2025", status = com.example.civic.data.models.ProjectStatus.ONGOING,
++    progressPercentage = 40)
+ 
+     @Test fun payloadIsPermanentIdAndUnaffectedByProgress() {
+@@ -55,6 +62,6 @@ class ProjectQRTest {
+ 
+     @Test fun generationUsesExistingOfficerScopeOnly() {
+-        val officer = CivicDataRepository.users.first { it.role == UserRole.OFFICER }
+-        val projects = CivicDataRepository.projects.toList()
++        val officer = com.example.civic.data.models.User("test-officer", "Test Officer", "officer@example.com", UserRole.OFFICER)
++        val projects = listOf(project)
+         assertEquals(projects, ProjectQRUtils.managedProjects(officer, projects))
+         assertTrue(ProjectQRUtils.managedProjects(null, projects).isEmpty())

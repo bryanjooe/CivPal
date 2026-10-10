@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CivicTech Supabase login verification</title>
+<style>
+  body{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;background:#f5f7fb;color:#19283b}
+  section{background:white;padding:24px;border:1px solid #d9e1ec;border-radius:12px;margin:18px 0}
+  h1{font-size:26px}h2{font-size:20px}label{display:block;margin:12px 0 4px}
+  input,select,button{font:inherit;padding:10px;border:1px solid #b7c5d8;border-radius:6px;box-sizing:border-box}
+  input,select{width:100%}button{margin-top:16px;background:#155ab4;color:white;cursor:pointer}
+  button:disabled{opacity:.6;cursor:wait}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef3fa;padding:16px;border-radius:8px}
+</style>
+<h1>CivicTech Supabase login verification</h1>
+<p>This standalone checker tests your existing backend. It does not change Android files or government records.</p>
+<section>
+  <h2>Public access and Auth settings</h2>
+  <button id="publicCheck" type="button">Check public API</button>
+</section>
+<section>
+  <h2>Verify one role account</h2>
+  <p>Enter the account password here, locally. It is sent only to your Supabase Auth server and is never saved or included in results. The test session is signed out after the check.</p>
+  <form id="loginForm">
+    <label for="account">Account</label>
+    <select id="account">
+      <option value="CITIZEN">Citizen — test@gmail.com</option>
+      <option value="OFFICER">Officer — officer@test.com</option>
+      <option value="COORDINATOR">Coordinator — coordinator@test.com</option>
+      <option value="CONTRACTOR">Contractor — contractor@test.com</option>
+      <option value="ADMINISTRATOR">Administrator — admin@test.com</option>
+    </select>
+    <label for="password">Password</label>
+    <input id="password" type="password" required autocomplete="off">
+    <button id="loginCheck" type="submit">Verify login and backend role</button>
+  </form>
+</section>
+<section><h2>Results</h2><pre id="results" aria-live="polite">No checks run yet.</pre></section>
+<script>
+  'use strict';
+  const projectUrl='https://wbczfllhlxyvziakznuy.supabase.co';
+  const publishableKey='sb_publishable_vupxxicecI5o0ZgXeStK9A_45XlWbej';
+  const accountEmails={CITIZEN:'test@gmail.com',OFFICER:'officer@test.com',COORDINATOR:'coordinator@test.com',CONTRACTOR:'contractor@test.com',ADMINISTRATOR:'admin@test.com'};
+  const output=document.getElementById('results');
+  let history=[];
+  function record(result){history.push(result);output.textContent=JSON.stringify(history,null,2);}
+  async function request(path,options={},token=null){
+    const headers={apikey:publishableKey,...(options.body?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{})};
+    const response=await fetch(projectUrl+path,{...options,headers,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+    const text=await response.text();let body;
+    try{body=text?JSON.parse(text):null;}catch{body=null;}
+    return {status:response.status,ok:response.ok,body};
+  }
+  document.getElementById('publicCheck').onclick=async function(){
+    this.disabled=true;
+    try{
+      const projects=await request('/rest/v1/civic_projects?select=id,is_demo&order=id');
+      record({check:'Public project access',passed:projects.ok&&Array.isArray(projects.body),httpStatus:projects.status,projectIds:Array.isArray(projects.body)?projects.body.map(p=>p.id):[]});
+      const profiles=await request('/rest/v1/profiles?select=id&limit=1');
+      record({check:'Signed-out private profiles denied',passed:[401,403].includes(profiles.status)&&profiles.body?.code==='42501',httpStatus:profiles.status});
+      const settings=await request('/auth/v1/settings');
+      if(!settings.ok)throw Error('Auth settings request failed: HTTP '+settings.status);
+      record({check:'Auth configuration',emailEnabled:settings.body.external?.email===true,signupEnabled:settings.body.disable_signup===false,
+        emailConfirmationRequired:settings.body.mailer_autoconfirm===false,guestSignInsEnabled:settings.body.external?.anonymous_users===true});
+    }catch(error){record({check:'Public API',passed:false,error:error.message});}
+    finally{this.disabled=false;}
+  };
+  document.getElementById('loginForm').onsubmit=async function(event){
+    event.preventDefault();const button=document.getElementById('loginCheck');button.disabled=true;
+    const expectedRole=document.getElementById('account').value;
+    const passwordInput=document.getElementById('password');let token=null;
+    try{
+      const signIn=await request('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:accountEmails[expectedRole],password:passwordInput.value})});
+      passwordInput.value='';
+      if(!signIn.ok){record({check:'Account login',expectedRole,passed:false,httpStatus:signIn.status,error:signIn.body?.msg||signIn.body?.error_description||signIn.body?.message||'Login failed'});return;}
+      token=signIn.body.access_token;
+      const userId=signIn.body.user?.id;
+      if(!token||!userId)throw Error('Auth did not return a valid test session');
+      const profile=await request('/rest/v1/civic_profiles?select=id,role,is_active&id=eq.'+encodeURIComponent(userId),{},token);
+      const rows=Array.isArray(profile.body)?profile.body:[];
+      record({check:'Authenticated profile and backend role',expectedRole,passed:profile.ok&&rows.length===1&&rows[0].id===userId&&rows[0].role===expectedRole&&rows[0].is_active===true,
+        authHttpStatus:signIn.status,profileHttpStatus:profile.status,actualRole:rows[0]?.role||null,active:rows[0]?.is_active||false});
+      if(expectedRole==='CITIZEN'){
+        const complaints=await request('/rest/v1/civic_complaints?select=id,citizen_id',{},token);
+        record({check:'Citizen complaint ownership filter',passed:complaints.ok&&Array.isArray(complaints.body)&&complaints.body.every(c=>c.citizen_id===userId),visibleComplaintCount:Array.isArray(complaints.body)?complaints.body.length:0});
+      }
+    }catch(error){record({check:'Account verification',expectedRole,passed:false,error:error.message});}
+    finally{
+      passwordInput.value='';
+      if(token){try{const signOut=await request('/auth/v1/logout?scope=local',{method:'POST'},token);record({check:'Test session signed out',expectedRole,passed:signOut.ok});}catch{record({check:'Test session sign-out',expectedRole,passed:false,error:'Network error during sign-out; local credentials cleared.'});}}
+      token=null;button.disabled=false;
+    }
+  };
+</script>
+</html>

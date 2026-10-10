@@ -1,0 +1,41 @@
+import { PGlite } from './.runtime/node_modules/@electric-sql/pglite/dist/index.js';
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+try{
+  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
+    create schema auth;
+    create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}',email_confirmed_at timestamptz,is_anonymous boolean default false);
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+    grant usage on schema auth to anon,authenticated;
+    create schema storage;
+    create table storage.buckets(id text primary key,name text,public boolean default false,file_size_limit bigint,allowed_mime_types text[]);
+    create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text,owner_id text,unique(bucket_id,name));
+    alter table storage.objects enable row level security;
+    grant usage on schema storage to anon,authenticated;
+    grant select,insert,update,delete on storage.objects to anon,authenticated;`);
+  await db.exec(await readFile(new URL('../migrations/001_civic_schema.sql',import.meta.url),'utf8'));
+  await db.exec(`insert into auth.users(id,email,email_confirmed_at)
+    select gen_random_uuid(),email,now() from (values('admin@test.com'),('officer@test.com'),('coordinator@test.com'),('contractor@test.com'),('test@gmail.com')) users(email);
+    update public.profiles set role='OFFICER' where email='coordinator@test.com';`);
+  const bundle=await readFile(new URL('../ALL_REMAINING_SETUP.sql',import.meta.url),'utf8');
+  await assert.rejects(db.exec(bundle),/Expected initial active CITIZEN profile/);
+  await db.exec('rollback');
+  assert.equal((await db.query(`select role from public.profiles where email='admin@test.com'`)).rows[0].role,'CITIZEN');
+  assert.equal((await db.query('select count(*)::int as n from public.projects')).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int as n from storage.buckets')).rows[0].n,0);
+  process.stdout.write('PASS late bundle failure rolls back roles, demo data, permissions and buckets\n');
+  await db.exec(`update public.profiles set role='CITIZEN' where email='coordinator@test.com'`);
+  const results=await db.exec(bundle);
+  const checks=results.at(-1).rows;
+  assert.equal(checks.length,15);
+  for(const row of checks)assert.equal(row.passed,!row.check_name.startsWith('15 '),row.check_name);
+  process.stdout.write('PASS complete one-paste bundle executes and returns 15 verification rows\n');
+  await db.exec(`update public.profiles set is_active=false where email='contractor@test.com'`);
+  const auditBefore=(await db.query('select count(*)::int as n from public.audit_logs')).rows[0].n;
+  await db.exec(bundle);
+  assert.equal((await db.query(`select is_active from public.profiles where email='contractor@test.com'`)).rows[0].is_active,false);
+  assert.equal((await db.query('select count(*)::int as n from public.audit_logs')).rows[0].n,auditBefore);
+  assert.equal((await db.query('select count(*)::int as n from public.projects')).rows[0].n,2);
+  process.stdout.write('PASS rerunning the combined file preserves changed account state and creates no duplicate rows\n\n3 bundle checks passed. Real Supabase services remain unverified.\n');
+}finally{await db.close();}

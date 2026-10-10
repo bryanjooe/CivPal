@@ -1,0 +1,4 @@
+# Copy these entries to your ignored local.properties; retain your own sdk.dir.
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
+# Secret/service_role keys and database passwords must never be added here.

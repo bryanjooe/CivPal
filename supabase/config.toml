@@ -1,0 +1,3 @@
+# JWT is verified against Auth by the function before any privileged operation.
+[functions.civic-invite-user]
+verify_jwt = false
