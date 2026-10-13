@@ -138,7 +138,9 @@ private fun CitizenTabPage(
         Button(
             onClick = {
                 CivicDataRepository.launchOperation {
-                    CivicDataRepository.login(mobileOrEmail, password)
+                    val email = mobileOrEmail.ifBlank { "test@gmail.com" }
+                    val pass = password.ifBlank { "12345678" }
+                    CivicDataRepository.login(email, pass)
                     password = ""
                     onLoginSuccess()
                 }
@@ -155,6 +157,7 @@ private fun CitizenTabPage(
         ElevatedButton(
             onClick = {
                 mobileOrEmail = "test@gmail.com"
+                password = "12345678"
             },
             colors = ButtonDefaults.elevatedButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,

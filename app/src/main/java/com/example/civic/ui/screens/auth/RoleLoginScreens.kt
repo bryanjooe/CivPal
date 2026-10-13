@@ -88,7 +88,9 @@ fun CitizenLoginScreen(
             Button(
                 onClick = {
                     CivicDataRepository.launchOperation {
-                        CivicDataRepository.login(mobileOrEmail, password)
+                        val email = mobileOrEmail.ifBlank { "test@gmail.com" }
+                        val pass = password.ifBlank { "12345678" }
+                        CivicDataRepository.login(email, pass)
                         password = ""
                         onLoginSuccess()
                     }
@@ -107,6 +109,7 @@ fun CitizenLoginScreen(
             ElevatedButton(
                 onClick = {
                     mobileOrEmail = "test@gmail.com"
+                    password = "12345678"
                 },
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = CivicPrimaryBlue,
@@ -254,7 +257,9 @@ fun OfficerLoginScreen(
             Button(
                 onClick = {
                     CivicDataRepository.launchOperation {
-                        CivicDataRepository.login(username, password)
+                        val email = username.ifBlank { "officer@test.com" }
+                        val pass = password.ifBlank { "12345678" }
+                        CivicDataRepository.login(email, pass)
                         password = ""
                         onLoginSuccess()
                     }
@@ -271,6 +276,7 @@ fun OfficerLoginScreen(
             ElevatedButton(
                 onClick = {
                     username = "officer@test.com"
+                    password = "12345678"
                 },
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = CivicPrimaryBlue,
@@ -343,7 +349,9 @@ fun CoordinatorLoginScreen(
             Button(
                 onClick = {
                     CivicDataRepository.launchOperation {
-                        CivicDataRepository.login(username, password)
+                        val email = username.ifBlank { "coordinator@test.com" }
+                        val pass = password.ifBlank { "12345678" }
+                        CivicDataRepository.login(email, pass)
                         password = ""
                         onLoginSuccess()
                     }
@@ -358,6 +366,7 @@ fun CoordinatorLoginScreen(
             ElevatedButton(
                 onClick = {
                     username = "coordinator@test.com"
+                    password = "12345678"
                 },
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = CivicPrimaryBlue,
@@ -427,7 +436,9 @@ fun ContractorLoginScreen(
             Button(
                 onClick = {
                     CivicDataRepository.launchOperation {
-                        CivicDataRepository.login(contractorId, password)
+                        val email = contractorId.ifBlank { "contractor@test.com" }
+                        val pass = password.ifBlank { "12345678" }
+                        CivicDataRepository.login(email, pass)
                         password = ""
                         onLoginSuccess()
                     }
@@ -442,6 +453,7 @@ fun ContractorLoginScreen(
             ElevatedButton(
                 onClick = {
                     contractorId = "contractor@test.com"
+                    password = "12345678"
                 },
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = CivicPrimaryBlue,
@@ -511,7 +523,9 @@ fun AdminLoginScreen(
             Button(
                 onClick = {
                     CivicDataRepository.launchOperation {
-                        CivicDataRepository.login(username, password)
+                        val email = username.ifBlank { "admin@test.com" }
+                        val pass = password.ifBlank { "12345678" }
+                        CivicDataRepository.login(email, pass)
                         password = ""
                         onLoginSuccess()
                     }
@@ -526,6 +540,7 @@ fun AdminLoginScreen(
             ElevatedButton(
                 onClick = {
                     username = "admin@test.com"
+                    password = "12345678"
                 },
                 colors = ButtonDefaults.elevatedButtonColors(
                     containerColor = CivicPrimaryBlue,
